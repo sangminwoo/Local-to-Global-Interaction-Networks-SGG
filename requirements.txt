@@ -1,0 +1,10 @@
+ninja
+yacs
+cython
+matplotlib
+tqdm
+h5py
+easydict
+dill
+opencv-python
+pycocotools
