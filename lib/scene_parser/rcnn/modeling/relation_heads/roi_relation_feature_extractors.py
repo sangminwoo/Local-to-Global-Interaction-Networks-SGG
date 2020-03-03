@@ -62,15 +62,15 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         )
 
         self.fg_emb_conv = nn.Sequential(
-            nn.Conv2d(1024, 1024, kernel_size=(14, 14)),
+            nn.Conv2d(1024, 256, kernel_size=(14, 14)),
             nn.ReLU(True),
-            nn.Conv2d(1024, 1024, kernel_size=(1, 1))
+            nn.Conv2d(256, 1024, kernel_size=(1, 1))
         )
 
         self.bg_emb_conv = nn.Sequential(
-            nn.Conv2d(1024, 1024, kernel_size=(14, 14)),
+            nn.Conv2d(1024, 256, kernel_size=(14, 14)),
             nn.ReLU(True),
-            nn.Conv2d(1024, 1024, kernel_size=(1, 1))
+            nn.Conv2d(256, 1024, kernel_size=(1, 1))
         )
 
         self.glocal_emb = GlocalContext(dim=1024)
