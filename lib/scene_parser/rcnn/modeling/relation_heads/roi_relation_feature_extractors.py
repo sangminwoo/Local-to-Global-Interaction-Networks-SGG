@@ -14,7 +14,8 @@ from .sparse_targets import _get_tensor_from_boxlist, _get_rel_inds
 from lib.scene_parser.rcnn.structures.bounding_box import BoxList
 # from lib.scene_parser.rcnn.modeling.relation_heads.spatial_rel_embedding import SpatialRelEmbedding
 from lib.scene_parser.rcnn.modeling.relation_heads.attention import AttentionGate, BinaryAttention, MultiHeadAttention
-from lib.scene_parser.rcnn.modeling.relation_heads.glocal_context_v2 import GlocalContext
+from lib.scene_parser.rcnn.modeling.relation_heads.relational_context import RelationalContext
+from lib.scene_parser.rcnn.modeling.relation_heads.entity_embedding import EntityEmbedding
 
 @registry.ROI_RELATION_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIRelationFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -50,30 +51,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.att = AttentionGate(in_channels=1024, reduction_ratio=16)
         self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
 
-        self.fg_emb = nn.Sequential(
-            nn.Linear(1024, 1024),
-            nn.ReLU(True),
-            nn.Linear(1024, 1024)
-        )
-        self.bg_emb = nn.Sequential(
-            nn.Linear(1024, 1024),
-            nn.ReLU(True),
-            nn.Linear(1024, 1024)
-        )
-
-        self.fg_emb_conv = nn.Sequential(
-            nn.Conv2d(1024, 256, kernel_size=(14, 14)),
-            nn.ReLU(True),
-            nn.Conv2d(256, 1024, kernel_size=(1, 1))
-        )
-
-        self.bg_emb_conv = nn.Sequential(
-            nn.Conv2d(1024, 256, kernel_size=(14, 14)),
-            nn.ReLU(True),
-            nn.Conv2d(256, 1024, kernel_size=(1, 1))
-        )
-
-        self.glocal_emb = GlocalContext(dim=1024)
+        self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=256, out_channels=1024, mode='conv')
+        self.rel_ctx = RelationalContext(dim=1024)
 
     def _object_mask(self, proposal_pairs, proposals_union):
         box_pairs = torch.cat([pair_boxes.bbox for pair_boxes in proposal_pairs], dim=0) # Nx8
@@ -264,10 +243,11 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
 
         x_att = subj_att + obj_att + bg_att # Nx1024x14x14
 
-        # x = self.head(x_att) # x: Tensor(858x2048x7x7)
-        return x
+        x = self.head(x_att) # Nx2048x7x7
 
-    def _graph_mask_conv(self, x, proposal_pairs):
+        return x # # Nx2048x7x7
+
+    def _graph_mask_gcn(self, x, proposal_pairs):
         '''
         Multi-Head Attention for each instances & Embed each instances and aggregate with gcn
         '''
@@ -284,68 +264,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         obj_att = self.att(x_object) # Nx1024x14x14
         bg_att = self.att(x_background) # Nx1024x14x14
 
-        subj_emb = self.fg_emb(
-            F.avg_pool2d(
-                subj_att, kernel_size=(subj_att.size(2), subj_att.size(3)) 
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        obj_emb = self.fg_emb(
-            F.avg_pool2d(
-                obj_att, kernel_size=(obj_att.size(2), obj_att.size(3))
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        bg_emb = self.bg_emb(
-            F.avg_pool2d(
-                bg_att, kernel_size=(bg_att.size(2), bg_att.size(3)) 
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-
-        '''
-        subj_emb = self.fg_emb(
-            F.max_pool2d(
-                subj_att, kernel_size=(subj_att.size(2), subj_att.size(3)) 
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        obj_emb = self.fg_emb(
-            F.max_pool2d(
-                obj_att, kernel_size=(obj_att.size(2), obj_att.size(3))
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        bg_emb = self.bg_emb(
-            F.max_pool2d(
-                bg_att, kernel_size=(bg_att.size(2), bg_att.size(3)) 
-            ).squeeze()
-        ) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        '''
-
-        x = self.glocal_emb(subj_emb, obj_emb, bg_emb) # Nx1024
-
-        # x = self.head(x_att) # x: Tensor(858x2048x7x7)
-        return x
-
-    def _graph_mask_fcn(self, x, proposal_pairs):
-        '''
-        Multi-Head Attention for each instances
-        & Used Fully Convolutional Network rather than avgpool-linear to preserve positional information
-        '''
-        proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
-
-        x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
-        
-        subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
-        x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
-        x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
-        x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
-        
-        subj_att = self.att(x_subject) # Nx1024x14x14
-        obj_att = self.att(x_object) # Nx1024x14x14
-        bg_att = self.att(x_background) # Nx1024x14x14
-
-        subj_emb = self.fg_emb_conv(subj_att).squeeze() # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        obj_emb = self.fg_emb_conv(obj_att).squeeze() # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-        bg_emb = self.bg_emb_conv(bg_att).squeeze()  # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
-
-        x = self.glocal_emb(subj_emb, obj_emb, bg_emb) # Nx1024
+        subj_emb, obj_emb, bg_emb = self.entity_emb(subj_att, obj_att, bg_att) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
+        x = self.rel_ctx(subj_emb, obj_emb, bg_emb) # Nx1024
 
         # x = self.head(x_att) # x: Tensor(858x2048x7x7)
         return x
@@ -367,7 +287,7 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         # x = self._union_box_feats(x, proposal_pairs) # 1024x2048x7x7
         # x, maskloss = self._object_mask_attention(x, proposal_pairs) # 1024x2048x7x7
         # x = self._graph_mask_attention(x, proposal_pairs)
-        x = self._graph_mask_fcn(x, proposal_pairs)
+        x = self._graph_mask_gcn(x, proposal_pairs)
 
         #spatial_rel = self.spatial_relation_feature_extractor(proposal_pairs)
 

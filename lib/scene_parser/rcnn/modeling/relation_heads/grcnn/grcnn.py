@@ -131,7 +131,6 @@ class GRCNN(nn.Module):
         # word_embedding = 
         # spatial_embeds
 
-
         '''feature level agcn'''
         obj_feats = [x_obj]
         pred_feats = [x_pred]

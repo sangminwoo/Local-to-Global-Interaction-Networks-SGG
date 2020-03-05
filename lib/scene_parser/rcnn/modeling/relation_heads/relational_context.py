@@ -29,12 +29,12 @@ class GCN(nn.Module):
 		out = x + out # Nx3x1024 + Nx3x1024 = Nx3x1024; add self
 		return out # Nx3x1024
 
-class GlocalContext(nn.Module):
+class RelationalContext(nn.Module):
 	'''
-	Glocal context aggregation module
+	Relational context aggregation module
 	'''
 	def __init__(self, dim=1024):
-		super(GlocalContext, self).__init__()
+		super(RelationalContext, self).__init__()
 		self.gcn = GCN(in_dim=dim, hid_dim=dim, out_dim=dim)
 
 	def forward(self, subj_emb, obj_emb, bg_emb): # Nx1024
@@ -43,7 +43,7 @@ class GlocalContext(nn.Module):
 		adj = 1 - torch.eye(3) # ones(3x3) diagonal(0); each indicates subj, obj, background
 		adj_N = torch.stack([adj for _ in range(N)], dim=0) # Nx3x3
 
-		glocal_features = self.gcn(features, adj_N) # Nx3x1024
-		glocal_features = torch.sum(glocal_features, dim=1) # Nx1024
+		relation_ctx = self.gcn(features, adj_N) # Nx3x1024
+		relation_ctx = torch.sum(relation_ctx, dim=1) # Nx1024
 
-		return glocal_features # Nx1024
+		return relation_ctx # Nx1024

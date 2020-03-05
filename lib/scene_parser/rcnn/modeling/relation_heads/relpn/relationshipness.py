@@ -67,16 +67,8 @@ class Relationshipness(nn.Module):
             pos_subj = self.sub_pos_encoder(pos)
             pos_obj = self.obj_pos_encoder(pos)
             pos_scores = torch.mm(pos_subj, pos_obj.t()) # k x k
-<<<<<<< HEAD
 
             score = logits_scores + pos_scores
 
         relness = torch.sigmoid(score)
         return relness # k x k
-=======
-           
-            score = logits_scores + pos_scores
-
-        relness = torch.sigmoid(score)
-        return relness
->>>>>>> origin/master
