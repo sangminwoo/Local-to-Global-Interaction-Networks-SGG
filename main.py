@@ -67,7 +67,7 @@ def train(cfg, args):
     arguments = {}
     arguments["iteration"] = 0
     model = build_model(cfg, arguments, args.local_rank, args.distributed)
-    with torch.autograd.set_detect_anomaly(True):
+    with torch.autograd.set_detect_anomaly(False):
         model.train()
     return model
 

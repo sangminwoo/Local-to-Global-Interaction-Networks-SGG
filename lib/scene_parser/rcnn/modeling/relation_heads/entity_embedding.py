@@ -40,7 +40,23 @@ class ConvEmbedding(nn.Module):
 	Convolutional Embedding
 	'''
 	def __init__(self, in_channels, hid_channels, out_channels, kernel_size=14):
+		'''
+		'kernel_size' are set by manual
+		'''
 		super(ConvEmbedding, self).__init__()
+		self.fg_emb = nn.Sequential(
+			nn.Conv2d(in_channels, hid_channels, kernel_size=(8, 8)),
+			nn.ReLU(),
+			nn.Conv2d(hid_channels, out_channels, kernel_size=(7, 7))
+		)
+
+		self.bg_emb = nn.Sequential(
+			nn.Conv2d(in_channels, hid_channels, kernel_size=(8, 8)),
+			nn.ReLU(),
+			nn.Conv2d(hid_channels, out_channels, kernel_size=(7, 7))
+		)
+
+		'''
 		self.fg_emb = nn.Sequential(
 			nn.Conv2d(in_channels, hid_channels, kernel_size=(kernel_size, kernel_size)),
 			nn.ReLU(),
@@ -52,7 +68,7 @@ class ConvEmbedding(nn.Module):
 			nn.ReLU(),
 			nn.Conv2d(hid_channels, out_channels, kernel_size=(1, 1))
 		)
-
+		'''
 	def forward(self, subj, obj, bg):
 		subj = self.fg_emb(subj)
 		obj = self.fg_emb(obj)

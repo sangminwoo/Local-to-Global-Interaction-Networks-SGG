@@ -59,7 +59,7 @@ def align_and_update_state_dicts(model_state_dict, loaded_state_dict):
         #         tuple(loaded_state_dict[key_old].shape),
         #     )
         # )
-    logger.info("missed keys: {}".format(missed_current_keys))
+    # logger.info("missed keys: {}".format(missed_current_keys))
 
 def strip_prefix_if_present(state_dict, prefix):
     keys = sorted(state_dict.keys())

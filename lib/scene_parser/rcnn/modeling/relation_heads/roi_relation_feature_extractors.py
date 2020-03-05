@@ -49,9 +49,11 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.maxpool = nn.AdaptiveMaxPool2d(resolution) # (14, 14)
         
         self.att = AttentionGate(in_channels=1024, reduction_ratio=16)
+        self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32)
+        self.conv7x7 = nn.Conv2d(2048, 2048, kernel_size=7)
         self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
 
-        self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=256, out_channels=1024, mode='conv')
+        self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
         self.rel_ctx = RelationalContext(dim=1024)
 
     def _object_mask(self, proposal_pairs, proposals_union):
@@ -209,6 +211,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         '''
         x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
         x = self.head(x_union) # x: Tensor(858x2048x7x7)
+        x = self.att2048(x)
+        x = self.conv7x7(x).squeeze()
         return x
 
     def _object_mask_att(self, x, proposal_pairs):
@@ -233,9 +237,9 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
         
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
-        x_subject = x_union * subject_mask # Nx1024x14x14
-        x_object = x_union * object_mask # Nx1024x14x14
-        x_background = x_union * background_mask # Nx1024x14x14
+        x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+        x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+        x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
         
         subj_att = self.att(x_subject) # Nx1024x14x14
         obj_att = self.att(x_object) # Nx1024x14x14
@@ -254,7 +258,7 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
 
         x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
-        
+
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
         x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
         x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
@@ -277,33 +281,16 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         # im_inds: (N,1), img ind for each roi in the batch
         obj_box_priors, obj_labels, im_inds \
             = _get_tensor_from_boxlist(proposals, 'labels')
+
         # get index in the proposal pairs
         _, proposal_idx_pairs, im_inds_pairs = _get_tensor_from_boxlist(
             proposal_pairs, 'idx_pairs')
 
         rel_inds = _get_rel_inds(im_inds, im_inds_pairs, proposal_idx_pairs)
 
-        # x = self._sep_box_feats(x, proposal_pairs) # 1024x4096x7x7
-        # x = self._union_box_feats(x, proposal_pairs) # 1024x2048x7x7
-        # x, maskloss = self._object_mask_attention(x, proposal_pairs) # 1024x2048x7x7
-        # x = self._graph_mask_attention(x, proposal_pairs)
-        x = self._graph_mask_gcn(x, proposal_pairs)
-
-        #spatial_rel = self.spatial_relation_feature_extractor(proposal_pairs)
-
-        # spatial_embed = SpatialRelEmbedding(hidden_size=256)
-        # spatial_rel = [spatial_embed(proposal_pair) for proposal_pair in proposal_pairs] # 1024x256
-        # spatial_rel = torch.cat(spatial_rel, dim=0) # 1024, 256
-        # self.spatial_size = sptial_rel.size(1)
-        # spatial_rel = spatial_rel.unsqueeze(2).unsqueeze(3).repeat(1, 1, x.size(2), x.size(3)) # 1024x256x7x7
-
-        # x = torch.cat((x, spatial_rel), dim=1)
-        # conv= nn.Conv2d(x.size(1), 2048, kernel_size=1).to(x.device)
-        # x = conv(x)
-
-        # attention = AttentionGate(in_channels=x.size(1), reduction_ratio=32)
-        # attention = MultiHeadAttention(in_channels=x.size(1), num_heads=8, reduction_ratio=8)
-        # x = attention(x) # 1024x2048x7x7
+        x = self._union_box_feats(x, proposal_pairs)
+        # x = self._graph_mask_att(x, proposal_pairs)
+        # x = self._graph_mask_gcn(x, proposal_pairs)
 
         return x, rel_inds # x, spatial_rel, rel_inds # 1024x2048x7x7, 1024x256
 

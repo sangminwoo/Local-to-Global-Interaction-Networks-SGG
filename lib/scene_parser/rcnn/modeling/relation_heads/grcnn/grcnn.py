@@ -15,7 +15,6 @@ from ..spatial_rel_embedding import make_spatial_relation_feature_extractor
 from ..attention import AttentionGate, MultiHeadAttention
 
 class GRCNN(nn.Module):
-	# def __init__(self, fea_size, dropout=False, gate_width=1, use_kernel_function=False):
     def __init__(self, cfg, in_channels):
         super(GRCNN, self).__init__()
         self.cfg = cfg
@@ -31,16 +30,14 @@ class GRCNN(nn.Module):
             xy_hidden=32, spatial_hidden=256, num_dots=16, reduction_ratio=8
         )
 
-        # Visual(2048), Word(300), Spatial(212)
         self.obj_embedding = nn.Sequential(
             nn.Linear(self.pred_feature_extractor.out_channels, self.dim), # 2048, 1024
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim), # 1024, 1024
         )
 
-        # Visual(2048), Word(300), Spatial()
         self.rel_embedding = nn.Sequential(
-            nn.Linear(self.pred_feature_extractor.out_channels, self.dim), # ?, 1024
+            nn.Linear(self.pred_feature_extractor.out_channels, self.dim), # 2048, 1024
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim), # 1024, 1024
         )
@@ -113,7 +110,7 @@ class GRCNN(nn.Module):
 
         # Predicate features
         x_pred, _ = self.pred_feature_extractor(features, proposals, proposal_pairs) # 1024x2048x7x7
-        #x_pred = self.avgpool(x_pred) # 1024x2048x1x1
+        # x_pred = self.avgpool(x_pred) # 1024x2048x1x1
         
         # Attention Gate for predicate
         # x_pred = self.attention(x_pred)
@@ -124,7 +121,7 @@ class GRCNN(nn.Module):
 
         #x_pred = x_pred.view(x_pred.size(0), -1) # 1024x2048
         # x_pred = torch.cat((x_pred, spatial_embeds), dim=1)
-        #x_pred = self.rel_embedding(x_pred) # 1024x2048 ->  1024x1024
+        x_pred = self.rel_embedding(x_pred) # 1024x2048 ->  1024x1024
         
         # x_pred = torch.mm(x_pred, spatial_embeds) #  1024x1024 x 1024x256 = 1024x256
         

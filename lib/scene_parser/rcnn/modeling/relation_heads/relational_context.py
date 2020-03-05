@@ -17,16 +17,16 @@ class GCN(nn.Module):
 		self.gc1 = GCNLayer(in_dim, hid_dim)
 		self.gc2 = GCNLayer(hid_dim, out_dim)
 		self.relu = nn.ReLU()
-		self.dropout = nn.Dropout(0.5)
+		# self.dropout = nn.Dropout(0.5)
 
 	def forward(self, x, adj):
 		adj = adj.to(x.device)
 		out = self.gc1(x, adj) # Nx3x1024
 		out = self.relu(out) # Nx3x1024
-		if self.training:
-			out = self.dropout(out) # Nx3x1024
+		# if self.training:
+		# 	out = self.dropout(out) # Nx3x1024
 		out = self.gc2(out, adj) # Nx3x1024
-		out = x + out # Nx3x1024 + Nx3x1024 = Nx3x1024; add self
+		out = x + out # Nx3x1024; add self
 		return out # Nx3x1024
 
 class RelationalContext(nn.Module):
@@ -44,6 +44,6 @@ class RelationalContext(nn.Module):
 		adj_N = torch.stack([adj for _ in range(N)], dim=0) # Nx3x3
 
 		relation_ctx = self.gcn(features, adj_N) # Nx3x1024
-		relation_ctx = torch.sum(relation_ctx, dim=1) # Nx1024
+		#relation_ctx = torch.sum(relation_ctx, dim=1) # Nx1024
 
 		return relation_ctx # Nx1024
