@@ -2,6 +2,7 @@
 Main code of scene parser
 """
 import os
+import copy
 import logging
 import torch
 import torch.nn as nn
@@ -187,7 +188,7 @@ def get_save_dir(cfg):
     alg = cfg.MODEL.ALGORITHM + '_relpn' if cfg.MODEL.USE_RELPN else cfg.MODEL.ALGORITHM
     train_alg = (alg + '_' + train_mode + '_' + str(iter_step)) if "sg" in cfg.MODEL.ALGORITHM else cfg.MODEL.ALGORITHM
     outdir = os.path.join(
-        cfg.DATASET.NAME + '_' + cfg.DATASET.MODE + '_' + cfg.DATASET.LOADER,
+        cfg.DATASET.NAME + '_' + cfg.DATASET.MODE + '_' + cfg.DATASET.LOADER + cfg.MODEL.SESSION,
         cfg.MODEL.BACKBONE.CONV_BODY, train_alg,
         'BatchSize_{}'.format(cfg.DATASET.TRAIN_BATCH_SIZE),
         'Base_LR_{}'.format(cfg.SOLVER.BASE_LR)
@@ -215,4 +216,7 @@ def build_scene_parser_optimizer(cfg, model, local_rank=0, distributed=False):
         logger=logging.getLogger("scene_graph_generation.checkpointer"))
     model_weight = cfg.MODEL.WEIGHT_DET if cfg.MODEL.WEIGHT_DET != "" else cfg.MODEL.WEIGHT_IMG
     extra_checkpoint_data = checkpointer.load(model_weight, resume=cfg.resume)
+    if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOXES:
+        model.rel_heads.box_feature_extractor.load_state_dict(model.roi_heads.box.feature_extractor.state_dict())
+        model.rel_heads.box_predictor.load_state_dict(model.roi_heads.box.predictor.state_dict())
     return optimizer, scheduler, checkpointer, extra_checkpoint_data

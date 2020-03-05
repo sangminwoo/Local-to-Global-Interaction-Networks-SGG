@@ -111,7 +111,9 @@ def main():
     cfg.MODEL.USE_FREQ_PRIOR = args.use_freq_prior
     cfg.MODEL.ALGORITHM = args.algorithm
     if args.batchsize > 0:
-        cfg.DATASET.TRAIN_BATCH_SIZE = args.batchsize   
+        cfg.DATASET.TRAIN_BATCH_SIZE = args.batchsize
+    if args.session > 0:
+        cfg.MODEL.SESSION = str(args.session)   
     # cfg.freeze()
 
     if not os.path.exists("logs") and get_rank() == 0:

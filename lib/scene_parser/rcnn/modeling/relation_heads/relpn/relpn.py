@@ -147,7 +147,6 @@ class RelPN(nn.Module):
         BoxPairList(num_boxes=3080, image_width=1024, image_height=679, mode=xyxy), 56*55=3080
         BoxPairList(num_boxes=380, image_width=1024, image_height=681, mode=xyxy)] 20*19=380
         '''
-
         # add corresponding label and regression_targets information to the bounding boxes
         for labels_per_image, proposal_pairs_per_image in zip(labels, proposal_pairs):
             proposal_pairs_per_image.add_field("labels", labels_per_image)
