@@ -59,19 +59,16 @@ class Relationshipness(nn.Module):
         logits_subj = self.logit_subj(logits) # k x 64
         logits_obj = self.logit_obj(logits)   # k x 64
         logits_scores = torch.mm(logits_subj, logits_obj.t()) # k x k
-        logits_scores = torch.sigmoid(logits_scores)
-
-        #relness = (feats_scores + logits_scores) / 2
-        relness = logits_scores
+        
+        score = logits_scores
 
         if self.pos_encoding:
             pos = box_pos_encoder(bbox, imsize[0], imsize[1])
             pos_subj = self.sub_pos_encoder(pos)
             pos_obj = self.obj_pos_encoder(pos)
             pos_scores = torch.mm(pos_subj, pos_obj.t()) # k x k
-            pos_scores = torch.sigmoid(pos_scores)
 
-            #relness = (feats_scores + logits_scores + pos_scores) / 3
-            relness = (logits_scores + pos_scores) /2
+            score = logits_scores + pos_scores
 
-        return relness
+        relness = torch.sigmoid(score)
+        return relness # k x k

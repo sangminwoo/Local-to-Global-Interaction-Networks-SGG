@@ -1,3 +1,4 @@
+detection_*.jpg
 *.json
 *.h5
 *.npy
