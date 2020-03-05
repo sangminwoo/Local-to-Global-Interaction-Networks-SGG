@@ -14,18 +14,18 @@ def make_optimizer(cfg, model):
         if "bias" in key:
             lr = cfg.SOLVER.BASE_LR * cfg.SOLVER.BIAS_LR_FACTOR # 0.01 = 0.005 * 2
             weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS # 0
-        params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
+        params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}] # value, 0.01, 0
 
-    optimizer = torch.optim.SGD(params, lr, momentum=cfg.SOLVER.MOMENTUM) # 0.9
+    optimizer = torch.optim.SGD(params, lr, momentum=cfg.SOLVER.MOMENTUM) # params, 0.005, 0.9
     return optimizer
 
 
 def make_lr_scheduler(cfg, optimizer):
     return WarmupMultiStepLR(
-        optimizer,
-        cfg.SOLVER.STEPS, # 70000, 90000
+        optimizer, # SGD(lr=0.005, momentum=0.9)
+        cfg.SOLVER.STEPS, # 15000, 25000
         cfg.SOLVER.GAMMA, # 0.1
-        warmup_factor=cfg.SOLVER.WARMUP_FACTOR, # 0.33333
+        warmup_factor=cfg.SOLVER.WARMUP_FACTOR, # 0.33333333
         warmup_iters=cfg.SOLVER.WARMUP_ITERS, # 500
         warmup_method=cfg.SOLVER.WARMUP_METHOD, # linear
     )
