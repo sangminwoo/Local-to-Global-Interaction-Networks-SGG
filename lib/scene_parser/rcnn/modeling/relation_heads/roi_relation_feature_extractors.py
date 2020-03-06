@@ -50,7 +50,11 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         
         self.att = AttentionGate(in_channels=1024, reduction_ratio=16)
         self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32)
-        self.conv7x7 = nn.Conv2d(2048, 2048, kernel_size=7)
+        self.conv7x7 = nn.Sequential(
+            nn.Conv2d(2048, 2048, kernel_size=5),
+            nn.ReLU(True),
+            nn.Conv2d(2048, 2048, kernel_size=3)
+        )
         self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
 
         self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
@@ -248,6 +252,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         x_att = subj_att + obj_att + bg_att # Nx1024x14x14
 
         x = self.head(x_att) # Nx2048x7x7
+        # x = self.att2048(x) # Nx2048x7x7
+        # x = self.conv7x7(x).squeeze() # Nx2048x1x1 -> Nx2048
 
         return x # # Nx2048x7x7
 
@@ -274,6 +280,45 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         # x = self.head(x_att) # x: Tensor(858x2048x7x7)
         return x
 
+    def _graph_mask_hide(self, x, proposal_pairs):
+        '''
+        Hide, Attend and Connect
+        0: subj + obj
+        1: subj + context
+        2: obj + context
+        '''
+        proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
+
+        x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
+
+        subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
+
+        '''hide'''
+        rand = np.random.randint(3)
+        if rand == 0:
+            x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+            x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+            '''attend'''
+            subj_att = self.att(x_subject) # Nx1024x14x14
+            obj_att = self.att(x_object) # Nx1024x14x14
+            x_att = subj_att + obj_att
+        elif rand == 1:
+            x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+            x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+            subj_att = self.att(x_subject) # Nx1024x14x14
+            bg_att = self.att(x_background) # Nx1024x14x14
+            x_att = subj_att + bg_att
+        elif rand == 2:
+            x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+            x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+            obj_att = self.att(x_object) # Nx1024x14x14
+            bg_att = self.att(x_background) # Nx1024x14x14
+            x_att = obj_att + bg_att
+
+        x = self.head(x_att) # x: Tensor(858x2048x7x7)
+        x = self.conv7x7(x).squeeze()
+        return x
+
     def forward(self, x, proposals, proposal_pairs):
 
         # acquire tensor format per batch data
@@ -288,9 +333,10 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
 
         rel_inds = _get_rel_inds(im_inds, im_inds_pairs, proposal_idx_pairs)
 
-        x = self._union_box_feats(x, proposal_pairs)
+        # x = self._union_box_feats(x, proposal_pairs)
         # x = self._graph_mask_att(x, proposal_pairs)
         # x = self._graph_mask_gcn(x, proposal_pairs)
+        x = self._graph_mask_hide(x, proposal_pairs)
 
         return x, rel_inds # x, spatial_rel, rel_inds # 1024x2048x7x7, 1024x256
 
