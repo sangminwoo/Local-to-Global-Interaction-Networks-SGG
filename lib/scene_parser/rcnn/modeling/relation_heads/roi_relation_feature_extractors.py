@@ -48,7 +48,10 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(resolution) # (14, 14)
         self.maxpool = nn.AdaptiveMaxPool2d(resolution) # (14, 14)
         
-        self.att = AttentionGate(in_channels=1024, reduction_ratio=16)
+        self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=16)
+        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=16)
+        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=16)
+
         self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32)
         self.conv7x7 = nn.Sequential(
             nn.Conv2d(2048, 2048, kernel_size=5),
@@ -293,27 +296,40 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
 
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
 
-        '''hide'''
-        rand = np.random.randint(3)
-        if rand == 0:
+        if self.training:
+            rand = np.random.randint(3)
+            if rand == 0:
+                '''hide'''
+                x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+                x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+                
+                '''attend'''
+                subj_att = self.subj_att(x_subject) # Nx1024x14x14
+                obj_att = self.obj_att(x_object) # Nx1024x14x14
+                x_att = subj_att + obj_att
+            elif rand == 1:
+                x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+                x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+                
+                subj_att = self.subj_att(x_subject) # Nx1024x14x14
+                bg_att = self.bg_att(x_background) # Nx1024x14x14
+                x_att = subj_att + bg_att
+            elif rand == 2:
+                x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+                x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+                
+                obj_att = self.obj_att(x_object) # Nx1024x14x14
+                bg_att = self.bg_att(x_background) # Nx1024x14x14
+                x_att = obj_att + bg_att
+        else:
             x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
             x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
-            '''attend'''
-            subj_att = self.att(x_subject) # Nx1024x14x14
-            obj_att = self.att(x_object) # Nx1024x14x14
-            x_att = subj_att + obj_att
-        elif rand == 1:
-            x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
             x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
-            subj_att = self.att(x_subject) # Nx1024x14x14
-            bg_att = self.att(x_background) # Nx1024x14x14
-            x_att = subj_att + bg_att
-        elif rand == 2:
-            x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
-            x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
-            obj_att = self.att(x_object) # Nx1024x14x14
-            bg_att = self.att(x_background) # Nx1024x14x14
-            x_att = obj_att + bg_att
+            
+            subj_att = self.subj_att(x_subject) # Nx1024x14x14
+            obj_att = self.obj_att(x_object) # Nx1024x14x14
+            bg_att = self.bg_att(x_background) # Nx1024x14x14
+            x_att = subj_att + obj_att + bg_att
 
         x = self.head(x_att) # x: Tensor(858x2048x7x7)
         x = self.conv7x7(x).squeeze()
