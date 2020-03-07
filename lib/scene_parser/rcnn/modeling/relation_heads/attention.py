@@ -20,9 +20,12 @@ class ChannelGate(nn.Module):
 		Arguments
 			x: Tensor[N, C, H, W]
 		'''
+		maxpool = F.max_pool2d(x, kernel_size=(x.size(2), x.size(3))).squeeze() # N,C,H,W -> N,C,1,1 -> N,C
 		avgpool = F.avg_pool2d(x, kernel_size=(x.size(2), x.size(3))).squeeze() # N,C,H,W -> N,C,1,1 -> N,C
-		self.mlp = self.mlp.to(x.device)
-		channel_att = F.sigmoid(self.mlp(avgpool)).unsqueeze(2).unsqueeze(3) # N,C -> N,C,1 -> N,C,1,1
+		
+		# self.mlp = self.mlp.to(x.device)
+		channel_att = F.sigmoid(self.mlp(maxpool) + self.mlp(avgpool)).unsqueeze(2).unsqueeze(3) # N,C -> N,C,1 -> N,C,1,1
+		
 		return x * channel_att # N,C,H,W
 
 class SpatialGate(nn.Module):
@@ -34,6 +37,7 @@ class SpatialGate(nn.Module):
 		self.spatial = nn.Sequential(
 				# nn.Conv2d(in_channels, 1, kernel_size=3, padding=1),
 				nn.Conv2d(in_channels, in_channels//reduction_ratio, kernel_size=1),
+				nn.BatchNorm2d(in_channels//reduction_ratio, eps=1e-5, momentum=0.01, affine=True),
 				nn.ReLU(inplace=True),
 				nn.Conv2d(in_channels//reduction_ratio, 1, kernel_size=1),
 				nn.Sigmoid()
@@ -44,9 +48,23 @@ class SpatialGate(nn.Module):
 		Arguments
 			x: Tensor[N, C, H, W]
 		'''
-		#self.spatial = self.spatial.to(x.device)
+		# self.spatial = self.spatial.to(x.device)
 		spatial_att = self.spatial(x) # N,1,H,W
 		return x * spatial_att # N,C,H,W
+
+class AttentionGate(nn.Module):
+	'''
+	Filtering the number of channels based on channel & spatial attention gate
+	'''
+	def __init__(self, in_channels, reduction_ratio=16):
+		super(AttentionGate, self).__init__()
+		self.channel_att = ChannelGate(in_channels, reduction_ratio) # 2048 x 128
+		self.spatial_att = SpatialGate(in_channels, reduction_ratio)
+
+	def forward(self, x):
+		att = self.channel_att(x)
+		att = self.spatial_att(att)
+		return att
 
 class SpatialMaskGate(nn.Module):
 	'''
@@ -67,23 +85,6 @@ class SpatialMaskGate(nn.Module):
 		mask_att = self.mask(x)
 		mask_loss = self.maskloss(mask_att, binary_mask)
 		return x * mask_att, mask_loss
-
-class AttentionGate(nn.Module):
-	'''
-	Filtering the number of channels based on channel & spatial attention gate
-	'''
-	def __init__(self, in_channels, reduction_ratio=16):
-		super(AttentionGate, self).__init__()
-		self.channel_att = ChannelGate(in_channels, reduction_ratio) # 2048 x 128
-		# self.spatial_att = SpatialGate(in_channels, reduction_ratio)
-
-	def forward(self, x):
-		channel_att = self.channel_att(x)
-		# spatial_att = self.spatial_att(x)
-
-		# return channel_att + spatial_att # N,C,H,W + N,C,H,W
-		# return channel_att * spatial_att # N,C,H,W x N,C,H,W
-		return channel_att
 
 class BinaryAttention(nn.Module):
 	'''
