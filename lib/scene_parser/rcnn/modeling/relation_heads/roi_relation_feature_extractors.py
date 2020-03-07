@@ -16,6 +16,7 @@ from lib.scene_parser.rcnn.structures.bounding_box import BoxList
 from lib.scene_parser.rcnn.modeling.relation_heads.attention import AttentionGate, BinaryAttention, MultiHeadAttention
 from lib.scene_parser.rcnn.modeling.relation_heads.relational_context import RelationalContext
 from lib.scene_parser.rcnn.modeling.relation_heads.entity_embedding import EntityEmbedding
+from lib.scene_parser.rcnn.modeling.relation_heads.non_local import nonlocal_block
 
 @registry.ROI_RELATION_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIRelationFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -62,6 +63,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
 
         self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
         self.rel_ctx = RelationalContext(dim=1024)
+
+        self.non_local = nonlocal_block(in_channels=1024)
 
     def _object_mask(self, proposal_pairs, proposals_union):
         box_pairs = torch.cat([pair_boxes.bbox for pair_boxes in proposal_pairs], dim=0) # Nx8
