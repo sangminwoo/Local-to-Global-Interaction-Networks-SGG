@@ -24,13 +24,47 @@ class ChannelGate(nn.Module):
 		avgpool = F.avg_pool2d(x, kernel_size=(x.size(2), x.size(3))).squeeze() # N,C,H,W -> N,C,1,1 -> N,C
 		
 		# self.mlp = self.mlp.to(x.device)
-		channel_att = F.sigmoid(self.mlp(maxpool) + self.mlp(avgpool)).unsqueeze(2).unsqueeze(3) # N,C -> N,C,1 -> N,C,1,1
+		channel_att = torch.sigmoid(self.mlp(maxpool) + self.mlp(avgpool)).unsqueeze(2).unsqueeze(3) # N,C -> N,C,1 -> N,C,1,1
 		
 		return x * channel_att # N,C,H,W
 
+
 class SpatialGate(nn.Module):
 	'''
-	Spatial Attention 1x1 conv channel-wise pooling for dimensionality reduction
+	Spatial Attention
+	'''
+	def __init__(self, kernel_size):
+		super(SpatialGate, self).__init__()
+		self.spatial = nn.Sequential(
+				nn.Conv2d(2, 1, kernel_size=kernel_size, stride=1, padding=(kernel_size-1)//2),
+				nn.Sigmoid()
+			)
+
+	def forward(self, x):
+		x_max = torch.max(x, dim=1)[0].unsqueeze(1)
+		x_avg = torch.mean(x, dim=1).unsqueeze(1)
+		x_cat = torch.cat((x_max, x_avg), dim=1)
+		
+		spatial_att = self.spatial(x_cat) # N,1,H,W
+		return x * spatial_att # N,C,H,W
+
+class AttentionGate(nn.Module):
+	'''
+	Channel * Spatial Attention
+	'''
+	def __init__(self, in_channels, reduction_ratio=16, kernel_size=3):
+		super(AttentionGate, self).__init__()
+		self.channel_att = ChannelGate(in_channels, reduction_ratio) # 2048 x 128
+		self.spatial_att = SpatialGate(kernel_size)
+
+	def forward(self, x):
+		att = self.channel_att(x)
+		att = self.spatial_att(att)
+		return att
+
+class SpatialGateV2(nn.Module):
+	'''
+	Spatial Attention
 	'''
 	def __init__(self, in_channels, reduction_ratio=16):
 		super(SpatialGate, self).__init__()
@@ -48,23 +82,8 @@ class SpatialGate(nn.Module):
 		Arguments
 			x: Tensor[N, C, H, W]
 		'''
-		# self.spatial = self.spatial.to(x.device)
 		spatial_att = self.spatial(x) # N,1,H,W
 		return x * spatial_att # N,C,H,W
-
-class AttentionGate(nn.Module):
-	'''
-	Filtering the number of channels based on channel & spatial attention gate
-	'''
-	def __init__(self, in_channels, reduction_ratio=16):
-		super(AttentionGate, self).__init__()
-		self.channel_att = ChannelGate(in_channels, reduction_ratio) # 2048 x 128
-		self.spatial_att = SpatialGate(in_channels, reduction_ratio)
-
-	def forward(self, x):
-		att = self.channel_att(x)
-		att = self.spatial_att(att)
-		return att
 
 class SpatialMaskGate(nn.Module):
 	'''

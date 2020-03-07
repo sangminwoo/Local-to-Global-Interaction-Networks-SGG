@@ -49,22 +49,22 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(resolution) # (14, 14)
         self.maxpool = nn.AdaptiveMaxPool2d(resolution) # (14, 14)
         
-        self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=16)
-        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=16)
-        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=16)
+        self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
 
-        self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32)
+        self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32, kernel_size=3)
         self.conv7x7 = nn.Sequential(
             nn.Conv2d(2048, 2048, kernel_size=5),
             nn.ReLU(True),
             nn.Conv2d(2048, 2048, kernel_size=3)
         )
-        self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
+        # self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
 
         self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
         self.rel_ctx = RelationalContext(dim=1024)
 
-        self.non_local = nonlocal_block(in_channels=1024)
+        self.non_local = nonlocal_block(in_channels=1024, reduction_ratio=2, maxpool=False, use_bn=False)
 
     def _object_mask(self, proposal_pairs, proposals_union):
         box_pairs = torch.cat([pair_boxes.bbox for pair_boxes in proposal_pairs], dim=0) # Nx8
@@ -123,65 +123,22 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         background = torch.stack(background, dim=0) # Nx1x14x14
         return subjectness, objectness, background # Nx1x14x14, Nx1x14x14, Nx1x14x14
 
-    ''' separate box features'''
     def _sep_box_feats(self, x, proposal_pairs):
-        '''
-        Arguments
-            x (list[Tensor]): feature maps
-            proposal_pairs (list[BoxPairList]): box pairs list
-        '''
-        # ret = [proposal_pair.copy_with_separate() for proposal_pair in proposal_pairs] 
-        # rel_features = [proposal_pair.relativity_embedding() for proposal_pair in proposal_pairs] 
-        # rel_features = torch.stack(rel_features, 0) 
-
-        # proposal1 = []; proposal2 = []
-        # for i in range(len(ret)):
-        #     proposal1.append(ret[i][0]) 
-        #     proposal2.append(ret[i][1]) 
-
         bbox_list1 = []
         bbox_list2 = []
-        #rel_features = []
         for proposal_pair in proposal_pairs:
             bbox1, bbox2 = proposal_pair.copy_with_separate() # (BoxList1, BoxList2), (BoxList3, BoxList4), ...
             bbox_list1.append(bbox1) # list(BoxList1, BoxList3, ...)
             bbox_list2.append(bbox2) # list(BoxList2, BoxList4, ...)
-            #rel_features.append(proposal_pair.relativity_embedding()) # list(Tensor[256x2x64], ...)
-        #rel_features = torch.stack(rel_features, 0) # Tensor[4/GPUx256x2x64]
 
-        # import pdb; pdb.set_trace()
         x1 = self.pooler(x, bbox_list1) 
         x2 = self.pooler(x, bbox_list2) # 1024x1024x14x14
-        '''
-        TODO: ADD, AVG, CONCAT
-            x_add = x1 + x2
-            x_avg = (x1 + x2) / 2
-            x_concat = torch.cat((x1, x2), dim=1)
-        TODO: MERGE then CONV, CONV then MERGE
-        '''
+
         x1 = self.head(x1) # 1024x2048x7x7
         x2 = self.head(x2) # 1024x2048x7x7
         x = torch.cat((x1, x2), dim=1) # 1024x4096x7x7
 
-        # x = attention(x.permute(0,2,3,1)) # 1024x7x7x4096 -> 1024x7x7x2048
-        # x = x.permute(0,3,1,2) # 1024x7x7x2048 -> 1024x2048x7x7
         return x # 1024x4096x7x7
-
-    # def _relativity_embedding(self, proposal_pairs):
-    #     rel_features = []
-    #     for proposal_pair in proposal_pairs:
-    #         rel_features.append(proposal_pair.relativity_embedding()) # list(Tensor[256x2x64], ...)
-    #     rel_features = torch.stack(rel_features, 0) # Tensor[4/GPUx256x2x64]
-
-    # def _attention_filter(self, x):
-    #     '''
-    #     Arguments
-    #         x (list[Tensor]): feature maps (NxCxHxW)
-    #     '''
-
-    #     att_filter = AttentionFilter(in_channels=x.size(1), reduction_ratio=16)
-    #     x = att_filter(x)
-    #     return x
 
     def _union_box_feats(self, x, proposal_pairs):
         '''
@@ -245,21 +202,23 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
 
         x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
-        
+        # x_union = self.non_local(x_union)
+
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
-        x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
-        x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
-        x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+        x_subject = x_union * subject_mask.cuda() # Nx1024x14x14
+        x_object = x_union * object_mask.cuda() # Nx1024x14x14
+        x_background = x_union * background_mask.cuda() # Nx1024x14x14
         
-        subj_att = self.att(x_subject) # Nx1024x14x14
-        obj_att = self.att(x_object) # Nx1024x14x14
-        bg_att = self.att(x_background) # Nx1024x14x14
+        subj_att = self.subj_att(x_subject) # Nx1024x14x14
+        obj_att = self.obj_att(x_object) # Nx1024x14x14
+        bg_att = self.bg_att(x_background) # Nx1024x14x14
 
         x_att = subj_att + obj_att + bg_att # Nx1024x14x14
 
         x = self.head(x_att) # Nx2048x7x7
-        # x = self.att2048(x) # Nx2048x7x7
-        # x = self.conv7x7(x).squeeze() # Nx2048x1x1 -> Nx2048
+        # x_union = self.non_local(x_union)
+        x = self.att2048(x) # Nx2048x7x7
+        x = self.conv7x7(x).squeeze() # Nx2048x1x1 -> Nx2048
 
         return x # # Nx2048x7x7
 
@@ -276,9 +235,9 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
         x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
         
-        subj_att = self.att(x_subject) # Nx1024x14x14
-        obj_att = self.att(x_object) # Nx1024x14x14
-        bg_att = self.att(x_background) # Nx1024x14x14
+        subj_att = self.subj_att(x_subject) # Nx1024x14x14
+        obj_att = self.obj_att(x_object) # Nx1024x14x14
+        bg_att = self.bg_att(x_background) # Nx1024x14x14
 
         subj_emb, obj_emb, bg_emb = self.entity_emb(subj_att, obj_att, bg_att) # Nx1024x14x14 -> Nx1024x1x1 -> Nx1024 -> Nx1024
         x = self.rel_ctx(subj_emb, obj_emb, bg_emb) # Nx1024
@@ -353,9 +312,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         rel_inds = _get_rel_inds(im_inds, im_inds_pairs, proposal_idx_pairs)
 
         # x = self._union_box_feats(x, proposal_pairs)
-        # x = self._graph_mask_att(x, proposal_pairs)
+        x = self._graph_mask_att(x, proposal_pairs)
         # x = self._graph_mask_gcn(x, proposal_pairs)
-        x = self._graph_mask_hide(x, proposal_pairs)
 
         return x, rel_inds # x, spatial_rel, rel_inds # 1024x2048x7x7, 1024x256
 

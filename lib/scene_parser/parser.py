@@ -14,6 +14,7 @@ from .rcnn.utils.checkpoint import SceneParserCheckpointer
 from .rcnn.structures.image_list import to_image_list
 from .rcnn.utils.comm import synchronize, get_rank
 from .rcnn.modeling.relation_heads.relation_heads import build_roi_relation_head
+from lib.scene_parser.rcnn.modeling.relation_heads.non_local import nonlocal_block
 
 SCENE_PAESER_DICT = ["sg_baseline", "sg_imp", "sg_msdn", "sg_grcnn", "sg_reldn"]
 
@@ -24,10 +25,11 @@ class SceneParser(GeneralizedRCNN):
         self.cfg = cfg
 
         self.rel_heads = None
+        self.non_local = nonlocal_block(in_channels=1024, reduction_ratio=2, maxpool=False, use_bn=False)
         if cfg.MODEL.RELATION_ON and self.cfg.MODEL.ALGORITHM in SCENE_PAESER_DICT:
             self.rel_heads = build_roi_relation_head(cfg, self.backbone.out_channels) # 1024
         self._freeze_components(self.cfg)
-
+       
     def _freeze_components(self, cfg):
         if cfg.MODEL.BACKBONE.FREEZE_PARAMETER:
             for param in self.backbone.parameters():
@@ -113,6 +115,7 @@ class SceneParser(GeneralizedRCNN):
             raise ValueError("In training mode, targets should be passed")
         images = to_image_list(images)
         features = self.backbone(images.tensors) # list[1 x Tensor(4x1024x48x64)]
+        features = [self.non_local(feature) for feature in features] 
         '''
         images.tensors.shape: torch.Size([4, 3, 768, 1024])
         images.image_size: [torch.Size([681, 1024]), torch.Size([768, 1024]), torch.Size([679, 1024]), torch.Size([681, 1024])]
