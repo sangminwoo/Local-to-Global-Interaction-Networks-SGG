@@ -10,7 +10,7 @@ def do_sg_evaluation(dataset, predictions, predictions_pred, output_folder, logg
     evaluator = BasicSceneGraphEvaluator.all_modes(multiple_preds=False)
 
     top_Ns = [20, 50, 100]
-
+    modes = ["sgdet"]
     result_dict = {}
 
     for mode in modes:

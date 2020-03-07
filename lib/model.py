@@ -287,7 +287,7 @@ class SceneGraphGeneration:
                 torch.save(predictions_pred, os.path.join(output_folder, "predictions_pred.pth"))
 
         extra_args = dict(
-            box_only=False if self.cfg.MODEL.RETINANET_ON else self.cfg.MODEL.RPN_ONLY,
+            box_only=False if self.cfg.MODEL.RETINANET_ON else self.cfg.MODEL.RPN_ONLY, # False / False
             iou_types=("bbox",),
             expected_results=self.cfg.TEST.EXPECTED_RESULTS,
             expected_results_sigma_tol=self.cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
