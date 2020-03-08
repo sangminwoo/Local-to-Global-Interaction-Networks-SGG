@@ -95,3 +95,6 @@ class EntityEmbedding(nn.Module):
 			return self.linear_emb(subj, obj, bg)
 		if self.mode == 'conv':
 			return self.conv_emb(subj, obj, bg)
+
+def entity_embedding(in_channels, hid_channels, out_channels, mode=None):
+	return EntityEmbedding(in_channels, hid_channels, out_channels, mode)
