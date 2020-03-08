@@ -102,31 +102,17 @@ class GRCNN(nn.Module):
         
         # Object features
         x_obj = torch.cat([proposal.get_field("features").detach() for proposal in proposals], 0) # Kx2048x1x1
-        obj_class_logits = torch.cat([proposal.get_field("logits").detach() for proposal in proposals], 0)
+        # obj_class_logits = torch.cat([proposal.get_field("logits").detach() for proposal in proposals], 0)
         # x_obj = self.avgpool(self.obj_feature_extractor(features, proposals))
         
-        x_obj = x_obj.view(x_obj.size(0), -1) # ?x2048
-        x_obj = self.obj_embedding(x_obj) # ?x2048 -> ?x1024
+        # x_obj = x_obj.view(x_obj.size(0), -1) # Kx2048
+        x_obj = x_obj.squeeze() # Kx2048
+        x_obj = self.obj_embedding(x_obj) # Kx2048 -> Kx1024
 
         # Predicate features
         x_pred, _ = self.pred_feature_extractor(features, proposals, proposal_pairs) # 1024x2048x7x7
         # x_pred = self.avgpool(x_pred) # 1024x2048x1x1
-        
-        # Attention Gate for predicate
-        # x_pred = self.attention(x_pred)
-
-        # Spatial feature for predicate
-        # spatial_embeds = self.spatial_feature_extractor(proposal_pairs) # 1024x256
-        # spatial_embeds = spatial_embeds.to(x_pred.device)
-
-        #x_pred = x_pred.view(x_pred.size(0), -1) # 1024x2048
-        # x_pred = torch.cat((x_pred, spatial_embeds), dim=1)
         x_pred = self.rel_embedding(x_pred) # 1024x2048 ->  1024x1024
-        
-        # x_pred = torch.mm(x_pred, spatial_embeds) #  1024x1024 x 1024x256 = 1024x256
-        
-        # word_embedding = 
-        # spatial_embeds
 
         '''feature level agcn'''
         obj_feats = [x_obj]

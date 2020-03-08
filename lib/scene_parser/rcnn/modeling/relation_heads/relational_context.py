@@ -47,3 +47,6 @@ class RelationalContext(nn.Module):
 		#relation_ctx = torch.sum(relation_ctx, dim=1) # Nx1024
 
 		return relation_ctx # Nx1024
+
+def relational_context(dim=1024):
+	return RelationalContext(dim)

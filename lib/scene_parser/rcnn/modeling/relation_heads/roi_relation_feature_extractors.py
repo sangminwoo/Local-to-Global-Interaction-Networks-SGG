@@ -13,9 +13,9 @@ from .sparse_targets import _get_tensor_from_boxlist, _get_rel_inds
 
 from lib.scene_parser.rcnn.structures.bounding_box import BoxList
 # from lib.scene_parser.rcnn.modeling.relation_heads.spatial_rel_embedding import SpatialRelEmbedding
-from lib.scene_parser.rcnn.modeling.relation_heads.attention import AttentionGate, BinaryAttention, MultiHeadAttention
-from lib.scene_parser.rcnn.modeling.relation_heads.relational_context import RelationalContext
-from lib.scene_parser.rcnn.modeling.relation_heads.entity_embedding import EntityEmbedding
+from lib.scene_parser.rcnn.modeling.relation_heads.attention import attention_gate
+from lib.scene_parser.rcnn.modeling.relation_heads.relational_context import relational_context
+from lib.scene_parser.rcnn.modeling.relation_heads.entity_embedding import entity_embedding
 from lib.scene_parser.rcnn.modeling.relation_heads.non_local import nonlocal_block
 
 @registry.ROI_RELATION_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIRelationFeatureExtractor")
@@ -49,11 +49,11 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(resolution) # (14, 14)
         self.maxpool = nn.AdaptiveMaxPool2d(resolution) # (14, 14)
         
-        self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
-        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
-        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.subj_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.obj_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.bg_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
 
-        self.att2048 = AttentionGate(in_channels=2048, reduction_ratio=32, kernel_size=3)
+        self.att2048 = attention_gate(in_channels=2048, reduction_ratio=32, kernel_size=3)
         self.conv7x7 = nn.Sequential(
             nn.Conv2d(2048, 2048, kernel_size=5),
             nn.ReLU(True),
@@ -61,14 +61,14 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         )
         # self.binary_att = BinaryAttention(in_channels=1024, reduction_ratio=16)
 
-        self.entity_emb = EntityEmbedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
-        self.rel_ctx = RelationalContext(dim=1024)
+        self.entity_emb = entity_embedding(in_channels=1024, hid_channels=1024, out_channels=1024, mode='conv')
+        self.rel_ctx = relational_context(dim=1024)
 
         self.non_local = nonlocal_block(in_channels=1024, reduction_ratio=2, maxpool=False, use_bn=False)
 
     def _object_mask(self, proposal_pairs, proposals_union):
-        box_pairs = torch.cat([pair_boxes.bbox for pair_boxes in proposal_pairs], dim=0) # Nx8
-        box_unions = torch.cat([union_boxes.bbox for union_boxes in proposals_union], dim=0) # Nx4
+        box_pairs = torch.cat([pair_boxes.bbox.detach() for pair_boxes in proposal_pairs], dim=0) # Nx8
+        box_unions = torch.cat([union_boxes.bbox.detach() for union_boxes in proposals_union], dim=0) # Nx4
         rescaled_ux = box_unions[:,[0,2]]-box_unions[:,0].view(-1, 1).repeat(1, 2) # Nx2
         rescaled_uy = box_unions[:,[1,3]]-box_unions[:,1].view(-1, 1).repeat(1, 2) # Nx2
         union_xy = torch.cat((rescaled_ux[:, 1].view(-1,1), rescaled_uy[:, 1].view(-1, 1)), dim=1) # Nx2
@@ -92,8 +92,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         return objectness
 
     def _graph_mask(self, proposal_pairs, proposals_union):
-        box_pairs = torch.cat([pair_boxes.bbox for pair_boxes in proposal_pairs], dim=0) # Nx8
-        box_unions = torch.cat([union_boxes.bbox for union_boxes in proposals_union], dim=0) # Nx4
+        box_pairs = torch.cat([pair_boxes.bbox.detach() for pair_boxes in proposal_pairs], dim=0) # Nx8
+        box_unions = torch.cat([union_boxes.bbox.detach() for union_boxes in proposals_union], dim=0) # Nx4
         rescaled_ux = box_unions[:,[0,2]]-box_unions[:,0].view(-1, 1).repeat(1, 2) # Nx2
         rescaled_uy = box_unions[:,[1,3]]-box_unions[:,1].view(-1, 1).repeat(1, 2) # Nx2
         union_xy = torch.cat((rescaled_ux[:, 1].view(-1,1), rescaled_uy[:, 1].view(-1, 1)), dim=1) # Nx2

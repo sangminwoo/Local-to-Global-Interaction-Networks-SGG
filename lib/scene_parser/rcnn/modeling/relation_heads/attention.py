@@ -156,3 +156,6 @@ class MultiHeadAttention(nn.Module):
 
 		out = torch.cat(out, dim=1)
 		return out #out.to(x.device)
+
+def attention_gate(in_channels, reduction_ratio=16, kernel_size=3):
+	return AttentionGate(in_channels, reduction_ratio, kernel_size)
