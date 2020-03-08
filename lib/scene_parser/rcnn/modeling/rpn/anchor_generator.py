@@ -126,12 +126,12 @@ class AnchorGenerator(nn.Module):
 
 
 def make_anchor_generator(config):
-    anchor_sizes = config.MODEL.RPN.ANCHOR_SIZES
-    aspect_ratios = config.MODEL.RPN.ASPECT_RATIOS
-    anchor_stride = config.MODEL.RPN.ANCHOR_STRIDE
-    straddle_thresh = config.MODEL.RPN.STRADDLE_THRESH
+    anchor_sizes = config.MODEL.RPN.ANCHOR_SIZES # 32, 64, 128, 256, 512
+    aspect_ratios = config.MODEL.RPN.ASPECT_RATIOS # 0.5, 1.0, 2.0
+    anchor_stride = config.MODEL.RPN.ANCHOR_STRIDE # 16
+    straddle_thresh = config.MODEL.RPN.STRADDLE_THRESH # 0
 
-    if config.MODEL.RPN.USE_FPN:
+    if config.MODEL.RPN.USE_FPN: # False
         assert len(anchor_stride) == len(
             anchor_sizes
         ), "FPN should have len(ANCHOR_STRIDE) == len(ANCHOR_SIZES)"

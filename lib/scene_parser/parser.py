@@ -115,7 +115,7 @@ class SceneParser(GeneralizedRCNN):
             raise ValueError("In training mode, targets should be passed")
         images = to_image_list(images)
         features = self.backbone(images.tensors) # list[1 x Tensor(4x1024x48x64)]
-        features = [self.non_local(feature) for feature in features] 
+        features = [self.non_local(feature) for feature in features] # list[1 x Tensor(4x1024x48x64)]
         '''
         images.tensors.shape: torch.Size([4, 3, 768, 1024])
         images.image_size: [torch.Size([681, 1024]), torch.Size([768, 1024]), torch.Size([679, 1024]), torch.Size([681, 1024])]

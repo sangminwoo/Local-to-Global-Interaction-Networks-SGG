@@ -41,9 +41,9 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.out_channels = head.out_channels
 
     def forward(self, x, proposals):
-        x = self.pooler(x, proposals)
-        x = self.head(x)
-        return x
+        x = self.pooler(x, proposals) # Nx1024x14x14
+        x = self.head(x) # Nx2048x7x7
+        return x # Nx2048x7x7
 
 
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("FPN2MLPFeatureExtractor")

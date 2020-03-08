@@ -100,9 +100,9 @@ class RPNHead(nn.Module):
         logits = []
         bbox_reg = []
         for feature in x:
-            t = F.relu(self.conv(feature))
-            logits.append(self.cls_logits(t))
-            bbox_reg.append(self.bbox_pred(t))
+            t = F.relu(self.conv(feature)) # NxCxHxW -> NxCxHxW
+            logits.append(self.cls_logits(t)) # NxCxHxW -> NxAxHxW (A: num_anchors)
+            bbox_reg.append(self.bbox_pred(t)) # NxCxHxW -> Nx4*AxHxW (A: num_anchors)
         return logits, bbox_reg
 
 
@@ -152,7 +152,7 @@ class RPNModule(torch.nn.Module):
             losses (dict[Tensor]): the losses for the model during training. During
                 testing, it is an empty dict.
         """
-        objectness, rpn_box_regression = self.head(features)
+        objectness, rpn_box_regression = self.head(features) # list[Tensor(NxAxHxW)], list[Tensor(Nx4*AxHxW)] (A: num_anchors)
         anchors = self.anchor_generator(images, features)
 
         if self.training:
@@ -161,7 +161,7 @@ class RPNModule(torch.nn.Module):
             return self._forward_test(anchors, objectness, rpn_box_regression)
 
     def _forward_train(self, anchors, objectness, rpn_box_regression, targets):
-        if self.cfg.MODEL.RPN_ONLY:
+        if self.cfg.MODEL.RPN_ONLY: # False
             # When training an RPN-only model, the loss is determined by the
             # predicted objectness and rpn_box_regression values and there is
             # no need to transform the anchors into predicted boxes; this is an

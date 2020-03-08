@@ -205,9 +205,9 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         # x_union = self.non_local(x_union)
 
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
-        x_subject = x_union * subject_mask.cuda() # Nx1024x14x14
-        x_object = x_union * object_mask.cuda() # Nx1024x14x14
-        x_background = x_union * background_mask.cuda() # Nx1024x14x14
+        x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+        x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+        x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
         
         subj_att = self.subj_att(x_subject) # Nx1024x14x14
         obj_att = self.obj_att(x_object) # Nx1024x14x14
