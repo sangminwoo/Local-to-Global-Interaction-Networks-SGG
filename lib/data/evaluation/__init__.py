@@ -26,7 +26,7 @@ def evaluate(dataset, predictions, output_folder, **kwargs):
         dataset_name = dataset.__class__.__name__
         raise NotImplementedError("Unsupported dataset type {}.".format(dataset_name))
 
-def evaluate_sg(dataset, predictions, predictions_pred, output_folder, **kwargs):
+def evaluate_sg(dataset, predictions, predictions_pred, output_folder, multiple_preds, **kwargs):
     """evaluate scene graph generation performance
     Args:
         dataset: Dataset object
@@ -40,7 +40,7 @@ def evaluate_sg(dataset, predictions, predictions_pred, output_folder, **kwargs)
         evaluation result
     """
     args = dict(
-        dataset=dataset, predictions=predictions, predictions_pred=predictions_pred, output_folder=output_folder, **kwargs
+        dataset=dataset, predictions=predictions, predictions_pred=predictions_pred, output_folder=output_folder, multiple_preds=multiple_preds, **kwargs
     )
     if isinstance(dataset, vg_hdf5):
         return sg_evaluation(**args)

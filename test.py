@@ -16,7 +16,7 @@ from lib.data.evaluation import evaluate, evaluate_sg
 from lib.data.evaluation.sg.sg_eval import do_sg_evaluation
 
 parser = argparse.ArgumentParser(description="Graph Reasoning Machine for Visual Question Answering")
-parser.add_argument("--config-file", default="configs/sgg_res101_joint.yaml") # baseline_res101.yaml, faster_rcnn_res101.yaml, sgg_res101_joint.yaml, sgg_res101_step.yaml
+parser.add_argument("--config-file", default="configs/sgg_res101_step.yaml") # baseline_res101.yaml, faster_rcnn_res101.yaml, sgg_res101_joint.yaml, sgg_res101_step.yaml
 parser.add_argument("--local_rank", type=int, default=0)
 parser.add_argument("--session", type=int, default=0)
 parser.add_argument("--resume", type=int, default=0)
@@ -74,8 +74,10 @@ extra_args = dict(
     expected_results=[],
     expected_results_sigma_tol=4,
 )
+multiple_preds = True # False
 evaluate_sg(dataset=data_loader_test.dataset,
             predictions=predictions,
             predictions_pred=predictions_pred,
             output_folder=output_folder,
+            multiple_preds=multiple_preds,
             **extra_args)

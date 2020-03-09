@@ -94,6 +94,7 @@ def main():
     parser.add_argument("--use_freq_prior", action='store_true')
     parser.add_argument("--visualize", action='store_true')
     parser.add_argument("--algorithm", type=str, default='sg_grcnn') # sg_baseline, sg_imp, sg_msdn, sg_grcnn, sg_reldn
+    parser.add_argument("--multiple-preds", default=False, action='store_true')
     args = parser.parse_args()
 
     num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1

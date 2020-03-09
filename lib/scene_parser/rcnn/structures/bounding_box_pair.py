@@ -261,10 +261,10 @@ class BoxPairList(object):
         return bbox
 
     def copy_with_union(self):
-        x1 = self.bbox[:, 0::4].min(dim=1).values.view(-1, 1) # x1
-        y1 = self.bbox[:, 1::4].min(dim=1).values.view(-1, 1) # y1
-        x2 = self.bbox[:, 2::4].max(dim=1).values.view(-1, 1) # x2
-        y2 = self.bbox[:, 3::4].max(dim=1).values.view(-1, 1) # y2
+        x1 = self.bbox[:, 0::4].min(dim=1)[0].view(-1, 1) # x1
+        y1 = self.bbox[:, 1::4].min(dim=1)[0].view(-1, 1) # y1
+        x2 = self.bbox[:, 2::4].max(dim=1)[0].view(-1, 1) # x2
+        y2 = self.bbox[:, 3::4].max(dim=1)[0].view(-1, 1) # y2
         bbox = BoxList(torch.cat((x1, y1, x2, y2), 1), self.size, self.mode)
         return bbox
 

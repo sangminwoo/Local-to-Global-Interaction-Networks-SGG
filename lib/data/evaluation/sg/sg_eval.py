@@ -2,15 +2,15 @@ import numpy as np
 import torch
 from .evaluator import BasicSceneGraphEvaluator
 
-def do_sg_evaluation(dataset, predictions, predictions_pred, output_folder, logger):
+def do_sg_evaluation(dataset, predictions, predictions_pred, output_folder, multiple_preds, logger):
     """
     scene graph generation evaluation
     """
 
-    evaluator = BasicSceneGraphEvaluator.all_modes(multiple_preds=False)
+    evaluator = BasicSceneGraphEvaluator.all_modes(multiple_preds=multiple_preds)
 
     top_Ns = [20, 50, 100]
-    modes = ["sgdet"]
+    modes = ["sgdet", "sgcls", "predcls"]
     result_dict = {}
 
     for mode in modes:

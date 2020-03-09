@@ -297,11 +297,14 @@ class SceneGraphGeneration:
                         output_folder=output_folder,
                         **extra_args)
 
+        multiple_preds = self.arguments.multiple_preds
+
         if self.cfg.MODEL.RELATION_ON:
             eval_sg_results = evaluate_sg(dataset=self.data_loader_test.dataset,
                             predictions=predictions,
                             predictions_pred=predictions_pred,
                             output_folder=output_folder,
+                            multiple_preds=multiple_preds,
                             **extra_args)
 
 def build_model(cfg, arguments, local_rank, distributed):
