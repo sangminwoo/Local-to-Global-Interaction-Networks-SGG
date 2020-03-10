@@ -25,6 +25,7 @@ Learning Predicate as Interaction for Scene Graph Generation
 | Ablation(Bottom-Up Context Aggregation)     |const R@20| R@50 | R@100 |uncon R@20| R@50 | R@100 |
 |:-------------------------------------------:|:--------:|:----:|:-----:|:--------:|:----:|:-----:|
 |Baseline                                     |          |      |       |          |      |       |
+|Baseline + non-local                         |  0.184	 | 0.232|	0.256 |   0.194  | 0.261|  0.308|
 |Baseline + avgpool sep -> embed sep -> BUCA  |          |      |       |          |      |       |
 |Baseline + maxpool sep -> embed sep -> BUCA  |          |      |       |          |      |       |
 |Baseline + conv sep -> embed sep -> BUCA     |          |      |       |          |      |       |
