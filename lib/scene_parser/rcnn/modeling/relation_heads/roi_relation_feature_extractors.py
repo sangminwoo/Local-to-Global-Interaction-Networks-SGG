@@ -13,10 +13,13 @@ from .sparse_targets import _get_tensor_from_boxlist, _get_rel_inds
 
 from lib.scene_parser.rcnn.structures.bounding_box import BoxList
 # from lib.scene_parser.rcnn.modeling.relation_heads.spatial_rel_embedding import SpatialRelEmbedding
-from lib.scene_parser.rcnn.modeling.relation_heads.attention import attention_gate
 from lib.scene_parser.rcnn.modeling.relation_heads.relational_context import relational_context
 from lib.scene_parser.rcnn.modeling.relation_heads.entity_embedding import entity_embedding
 from lib.scene_parser.rcnn.modeling.relation_heads.non_local import nonlocal_block
+
+from lib.scene_parser.rcnn.modeling.relation_heads.attention import InstanceAttention
+from lib.scene_parser.rcnn.modeling.relation_heads.relpn.multi_head_att import MultiHeadAttention
+from lib.scene_parser.rcnn.modeling.relation_heads.rel_embed import InstanceConvolution, InstanceEmbedding, RelationalEmbedding
 
 @registry.ROI_RELATION_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIRelationFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -49,9 +52,17 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(resolution) # (14, 14)
         self.maxpool = nn.AdaptiveMaxPool2d(resolution) # (14, 14)
         
-        self.subj_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
-        self.obj_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
-        self.bg_att = attention_gate(in_channels=1024, reduction_ratio=32, kernel_size=3)
+        self.instance_att = InstanceAttention(
+            in_channels=1024, reduction_ratio=128, kernel_size=3)
+
+        self.instance_conv = InstanceConvolution(
+            config, in_dim=2048, hid_dim=1024, out_dim=1024)
+
+        self.instance_embedding = InstanceEmbedding(
+            subj_dim=1024, obj_dim=1024, bg_dim=1024, hid_dim=1024, out_dim=1024)
+
+        self.rel_embedding = RelationalEmbedding(
+            subj_dim=1024, obj_dim=1024, bg_dim=1024, hid_dim=1024, out_dim=1024)
 
         self.att2048 = attention_gate(in_channels=2048, reduction_ratio=32, kernel_size=3)
         self.conv7x7 = nn.Sequential(
@@ -209,10 +220,7 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
         x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
         
-        subj_att = self.subj_att(x_subject) # Nx1024x14x14
-        obj_att = self.obj_att(x_object) # Nx1024x14x14
-        bg_att = self.bg_att(x_background) # Nx1024x14x14
-
+        subj_att, obj_att, bg_att = self.instance_att(x_subject, x_obj, x_background) # Nx1024x14x14
         x_att = subj_att + obj_att + bg_att # Nx1024x14x14
 
         x = self.head(x_att) # Nx2048x7x7
@@ -298,31 +306,19 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         return x
 
     def _graph_mask_interact(self, x, proposal_pairs):
-        '''
-        Multi-Head Attention for each instances & Sum and Embed
-        '''
         proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
-
-        x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
-        # x_union = self.non_local(x_union)
+        x_union = self.pooler(x, proposals_union)
 
         subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
         x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
         x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
         x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
-        
-        subj_att = self.subj_att(x_subject) # Nx1024x14x14
-        obj_att = self.obj_att(x_object) # Nx1024x14x14
-        bg_att = self.bg_att(x_background) # Nx1024x14x14
 
-        subj = self.head(subj_att) # Nx2048x7x7
-        obj = self.head(obj_att) # Nx2048x7x7
-        bg = self.head(bg_att) # Nx2048x7x7
-        # x_union = self.non_local(x_union)
-        x = self.att2048(x) # Nx2048x7x7
-        x = self.conv7x7(x).squeeze() # Nx2048x1x1 -> Nx2048
-
-        return x # # Nx2048x7x7
+        subj_att, obj_att, bg_att = self.instance_att(x_subject, x_obj, x_background) # Nx1024x14x14
+        subj, obj, bg = self.instance_conv(subj_att, obj_att, bg_att)
+        subj_emb, obj_emb, bg_emb = self.instance_embedding(subj, obj, bg) # Nx1024, Nx1024, Nx1024
+        x = self.rel_embedding(subj_emb, obj_emb, bg_emb) # Nx1024
+        return x # Nx1024
 
     def forward(self, x, proposals, proposal_pairs):
 

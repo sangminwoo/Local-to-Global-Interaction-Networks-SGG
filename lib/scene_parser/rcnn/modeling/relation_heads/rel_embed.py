@@ -1,7 +1,74 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from lib.scene_parser.rcnn.modeling.backbone import resnet
 from lib.scene_parser.rcnn.modeling.relation_heads.relpn.multi_head_att import MultiHeadAttention
+
+class InstanceConvolution(nn.Module):
+	def __init__(self, config, in_dim, hid_dim, out_dim):
+		super(InstanceConv, self).__init__()
+		stage = resnet.StageSpec(index=4, block_count=3, return_features=False)
+		subj_head = resnet.ResNetHead(
+            block_module=config.MODEL.RESNETS.TRANS_FUNC,
+            stages=(stage,),
+            num_groups=config.MODEL.RESNETS.NUM_GROUPS,
+            width_per_group=config.MODEL.RESNETS.WIDTH_PER_GROUP,
+            stride_in_1x1=config.MODEL.RESNETS.STRIDE_IN_1X1,
+            stride_init=None,
+            res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,
+            dilation=config.MODEL.RESNETS.RES5_DILATION
+        )
+		obj_head = resnet.ResNetHead(
+            block_module=config.MODEL.RESNETS.TRANS_FUNC,
+            stages=(stage,),
+            num_groups=config.MODEL.RESNETS.NUM_GROUPS,
+            width_per_group=config.MODEL.RESNETS.WIDTH_PER_GROUP,
+            stride_in_1x1=config.MODEL.RESNETS.STRIDE_IN_1X1,
+            stride_init=None,
+            res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,
+            dilation=config.MODEL.RESNETS.RES5_DILATION
+        )
+        bg_head = resnet.ResNetHead(
+            block_module=config.MODEL.RESNETS.TRANS_FUNC,
+            stages=(stage,),
+            num_groups=config.MODEL.RESNETS.NUM_GROUPS,
+            width_per_group=config.MODEL.RESNETS.WIDTH_PER_GROUP,
+            stride_in_1x1=config.MODEL.RESNETS.STRIDE_IN_1X1,
+            stride_init=None,
+            res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,
+            dilation=config.MODEL.RESNETS.RES5_DILATION
+        )
+
+		self.subj_head = nn.Sequential(
+			subj_head,
+            nn.Conv2d(in_dim, hid_dim, kernel_size=3, stride=1, padding=1), # 7x7 -> 7x7
+            nn.BatchNorm2d(hid_dim),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=(3,3), padding=1), # 7x7 -> 3x3
+            nn.Conv2d(hid_dim, out_dim, kernel_size=3), # 3x3 -> 1x1
+		)
+        self.obj_head = nn.Sequential(
+            obj_head,
+            nn.Conv2d(in_dim, hid_dim, kernel_size=3, stride=1, padding=1), # 7x7 -> 7x7
+            nn.BatchNorm2d(hid_dim),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=(3,3), padding=1), # 7x7 -> 3x3
+            nn.Conv2d(hid_dim, out_dim, kernel_size=3), # 3x3 -> 1x1
+        )
+        self.bg_head = nn.Sequential(
+            bg_head,
+            nn.Conv2d(in_dim, hid_dim, kernel_size=3, stride=1, padding=1), # 7x7 -> 7x7
+            nn.BatchNorm2d(hid_dim),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=(3,3), padding=1), # 7x7 -> 3x3
+            nn.Conv2d(hid_dim, out_dim, kernel_size=3), # 3x3 -> 1x1
+        )
+
+    def forward(self, subj, obj, bg):
+    	subj = self.subj_head(subj).squeeze()
+    	obj = self.obj_head(obj).squeeze()
+    	bg = self.bg_head(bg).squeeze()
+    	return subj, obj, bg
 
 class InstanceEmbedding(nn.Module):
 	def __init__(self, subj_dim, obj_dim, bg_dim, hid_dim, out_dim):

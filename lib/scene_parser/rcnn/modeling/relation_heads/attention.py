@@ -62,6 +62,18 @@ class AttentionGate(nn.Module):
 		att = self.spatial_att(att)
 		return att
 
+class InstanceAttention(nn.Module):
+	def __init__(self, in_channels=1024, reduction_ratio=128, kernel_size=3):
+		self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
+        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
+        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
+
+    def forward(self, subj, obj, bg):
+    	subj_att = self.subj_att(subj)
+    	obj_att = self.obj_att(obj)
+    	bg_att = self.bg_att(bg)
+    	return subj_att, obj_att, bg_att
+
 class SpatialGateV2(nn.Module):
 	'''
 	Spatial Attention
@@ -156,6 +168,3 @@ class MultiHeadAttention(nn.Module):
 
 		out = torch.cat(out, dim=1)
 		return out #out.to(x.device)
-
-def attention_gate(in_channels, reduction_ratio=16, kernel_size=3):
-	return AttentionGate(in_channels, reduction_ratio, kernel_size)
