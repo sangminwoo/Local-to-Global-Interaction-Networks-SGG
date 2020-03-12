@@ -84,7 +84,7 @@ def test(cfg, args, model=None):
 def main():
     ''' parse config file '''
     parser = argparse.ArgumentParser(description="Graph Reasoning Machine for Visual Question Answering")
-    parser.add_argument("--config-file", default="configs/sgg_res101_joint.yaml") # baseline_res101.yaml, faster_rcnn_res101.yaml, sgg_res101_joint.yaml, sgg_res101_step.yaml
+    parser.add_argument("--config-file", default="configs/sgg_res101_step.yaml") # baseline_res101.yaml, faster_rcnn_res101.yaml, sgg_res101_joint.yaml, sgg_res101_step.yaml
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument("--session", type=int, default=0)
     parser.add_argument("--resume", type=int, default=0)

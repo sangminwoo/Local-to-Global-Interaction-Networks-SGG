@@ -153,7 +153,7 @@ class RelPN(nn.Module):
 
         losses = 0
         for img_idx, proposals_per_image in enumerate(proposals):
-            obj_features = proposals_per_image.get_field('features') # Nx2048x1x1
+            obj_features = proposals_per_image.get_field('features').squeeze() # Nx2048x1x1 -> Nx2048
             obj_logits = proposals_per_image.get_field('logits') # Nx151
             obj_bboxes = proposals_per_image.bbox # Nx4
 
