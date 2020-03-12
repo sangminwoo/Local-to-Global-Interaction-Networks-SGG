@@ -297,6 +297,33 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         x = self.conv7x7(x).squeeze()
         return x
 
+    def _graph_mask_interact(self, x, proposal_pairs):
+        '''
+        Multi-Head Attention for each instances & Sum and Embed
+        '''
+        proposals_union = [proposal_pair.copy_with_union() for proposal_pair in proposal_pairs]
+
+        x_union = self.pooler(x, proposals_union) # x_union: Tensor(858x1024x14x14)
+        # x_union = self.non_local(x_union)
+
+        subject_mask, object_mask, background_mask = self._graph_mask(proposal_pairs, proposals_union) # Nx1x14x14
+        x_subject = x_union * subject_mask.to(x_union.device) # Nx1024x14x14
+        x_object = x_union * object_mask.to(x_union.device) # Nx1024x14x14
+        x_background = x_union * background_mask.to(x_union.device) # Nx1024x14x14
+        
+        subj_att = self.subj_att(x_subject) # Nx1024x14x14
+        obj_att = self.obj_att(x_object) # Nx1024x14x14
+        bg_att = self.bg_att(x_background) # Nx1024x14x14
+
+        subj = self.head(subj_att) # Nx2048x7x7
+        obj = self.head(obj_att) # Nx2048x7x7
+        bg = self.head(bg_att) # Nx2048x7x7
+        # x_union = self.non_local(x_union)
+        x = self.att2048(x) # Nx2048x7x7
+        x = self.conv7x7(x).squeeze() # Nx2048x1x1 -> Nx2048
+
+        return x # # Nx2048x7x7
+
     def forward(self, x, proposals, proposal_pairs):
 
         # acquire tensor format per batch data
