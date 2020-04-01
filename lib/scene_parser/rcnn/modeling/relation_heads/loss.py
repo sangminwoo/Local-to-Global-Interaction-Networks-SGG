@@ -294,14 +294,14 @@ def make_roi_relation_loss_evaluator(cfg):
         allow_low_quality_matches=False,
     )
 
-    bbox_reg_weights = cfg.MODEL.ROI_HEADS.BBOX_REG_WEIGHTS # (10.0, 10.0, 5.0, 5.0)
+    bbox_reg_weights = cfg.MODEL.ROI_HEADS.BBOX_REG_WEIGHTS
     box_coder = BoxCoder(weights=bbox_reg_weights)
 
     fg_bg_sampler = BalancedPositiveNegativePairSampler(
-        cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE, cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION # 256, 0.25
+        cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE, cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION
     )
 
-    cls_agnostic_bbox_reg = cfg.MODEL.CLS_AGNOSTIC_BBOX_REG # False
+    cls_agnostic_bbox_reg = cfg.MODEL.CLS_AGNOSTIC_BBOX_REG
 
     loss_evaluator = FastRCNNLossComputation(
         cfg,

@@ -63,7 +63,7 @@ class Pooler(nn.Module):
         poolers = []
         for scale in scales:
             poolers.append(
-                ROIAlign( # (14, 14), (1.0 / 16), 0
+                ROIAlign(
                     output_size, spatial_scale=scale, sampling_ratio=sampling_ratio
                 )
             )
@@ -76,12 +76,16 @@ class Pooler(nn.Module):
         self.map_levels = LevelMapper(lvl_min, lvl_max)
 
     def convert_to_roi_format(self, boxes):
-        # boxes: list(4 x Tensor(256x4))
-        concat_boxes = cat([b.bbox for b in boxes], dim=0) # Tensor(256+256+256+256x4)
+        concat_boxes = cat([b.bbox for b in boxes], dim=0)
         device, dtype = concat_boxes.device, concat_boxes.dtype
         ids = cat(
-            [torch.full((len(box), 1), i, dtype=dtype, device=device) for i, box in enumerate(boxes)], dim=0)
-        rois = torch.cat([ids, concat_boxes], dim=1) # Tensor(1024x5)
+            [
+                torch.full((len(b), 1), i, dtype=dtype, device=device)
+                for i, b in enumerate(boxes)
+            ],
+            dim=0,
+        )
+        rois = torch.cat([ids, concat_boxes], dim=1)
         return rois
 
     def forward(self, x, boxes):
@@ -92,15 +96,11 @@ class Pooler(nn.Module):
         Returns:
             result (Tensor)
         """
-        num_levels = len(self.poolers) # 4
-        rois = self.convert_to_roi_format(boxes) # Tensor(1024x5)
+        num_levels = len(self.poolers)
+        rois = self.convert_to_roi_format(boxes)
         if num_levels == 1:
             return self.poolers[0](x[0], rois)
-            '''
-            x[0]: Tensor(4x1024x48x64), rois: Tensor(1024x5)
-                -> RoIAlign((14,14), (1.0/16), 0)
-                    -> Tensor(1024x1024x14x14)
-            '''
+
         levels = self.map_levels(boxes)
 
         num_rois = len(rois)

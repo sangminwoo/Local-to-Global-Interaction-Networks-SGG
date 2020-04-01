@@ -2,11 +2,11 @@ DATASET:
   NAME: "vg"
   MODE: "benchmark"
   PATH: "datasets/vg_bm"
-  TRAIN_BATCH_SIZE: 2 #6
+  TRAIN_BATCH_SIZE: 8
   TEST_BATCH_SIZE: 1
 MODEL:
   WEIGHT_IMG: "catalog://ImageNetPretrained/MSRA/R-101"
-  WEIGHT_DET: "" #"checkpoints/vg_benchmark_object/R-101-C4/faster_rcnn/BatchSize_6/Base_LR_0.005/checkpoint_0099999.pth"  
+  WEIGHT_DET: ""
   ALGORITHM: "faster_rcnn"
   BACKBONE:
     CONV_BODY: "R-101-C4"
@@ -17,5 +17,5 @@ MODEL:
 SOLVER:
   BASE_LR: 5e-3
   MAX_ITER: 100000
-  STEPS: (70000,90000)
+  STEPS: (50000,70000,90000)
   CHECKPOINT_PERIOD: 5000

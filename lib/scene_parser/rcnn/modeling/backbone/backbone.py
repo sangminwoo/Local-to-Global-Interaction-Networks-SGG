@@ -16,7 +16,7 @@ from . import resnet
 def build_resnet_backbone(cfg):
     body = resnet.ResNet(cfg)
     model = nn.Sequential(OrderedDict([("body", body)]))
-    model.out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS # 256 * 4 = 1024
+    model.out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
     return model
 
 
@@ -79,4 +79,4 @@ def build_backbone(cfg):
         "cfg.MODEL.BACKBONE.CONV_BODY: {} are not registered in registry".format(
             cfg.MODEL.BACKBONE.CONV_BODY
         )
-    return registry.BACKBONES[cfg.MODEL.BACKBONE.CONV_BODY](cfg) # "R-101-C4"
+    return registry.BACKBONES[cfg.MODEL.BACKBONE.CONV_BODY](cfg)

@@ -13,9 +13,9 @@ class CombinedROIHeads(torch.nn.ModuleDict):
     def __init__(self, cfg, heads):
         super(CombinedROIHeads, self).__init__(heads)
         self.cfg = cfg.clone()
-        if cfg.MODEL.MASK_ON and cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR: # False 
+        if cfg.MODEL.MASK_ON and cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR:
             self.mask.feature_extractor = self.box.feature_extractor
-        if cfg.MODEL.KEYPOINT_ON and cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR: # False
+        if cfg.MODEL.KEYPOINT_ON and cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR:
             self.keypoint.feature_extractor = self.box.feature_extractor
 
     def forward(self, features, proposals, targets=None):
@@ -28,10 +28,10 @@ def build_roi_heads(cfg, in_channels):
     # individually create the heads, that will be combined together
     # afterwards
     roi_heads = []
-    if cfg.MODEL.RETINANET_ON: # False
+    if cfg.MODEL.RETINANET_ON:
         return []
 
-    if not cfg.MODEL.RPN_ONLY: # not False = True
+    if not cfg.MODEL.RPN_ONLY:
         roi_heads.append(("box", build_roi_box_head(cfg, in_channels)))
 
     # combine individual heads in a single module

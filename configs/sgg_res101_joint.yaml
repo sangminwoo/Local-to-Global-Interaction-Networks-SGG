@@ -1,14 +1,14 @@
 DATASET:
   NAME: "vg"
   MODE: "benchmark"
-  TRAIN_BATCH_SIZE: 4
+  TRAIN_BATCH_SIZE: 8
   TEST_BATCH_SIZE: 1
 MODEL:
   WEIGHT_IMG: "catalog://ImageNetPretrained/MSRA/R-101"
   WEIGHT_DET: ""
   RELATION_ON: True
-  ALGORITHM: "sg_baseline" # sg_baseline, sg_imp, sg_msdn, sg_grcnn, sg_reldn
-  USE_FREQ_PRIOR: False # True
+  ALGORITHM: "sg_baseline"
+  USE_FREQ_PRIOR: False
   USE_RELPN: True
   BACKBONE:
     CONV_BODY: "R-101-C4"
@@ -30,7 +30,6 @@ MODEL:
     MSDN_FEATURE_UPDATE_STEP: 2
     GRCNN_FEATURE_UPDATE_STEP: 2
     GRCNN_SCORE_UPDATE_STEP: 2
-    
 SOLVER:
   BASE_LR: 5e-3
   MAX_ITER: 100000

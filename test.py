@@ -74,7 +74,12 @@ extra_args = dict(
     expected_results=[],
     expected_results_sigma_tol=4,
 )
-multiple_preds = True # False
+# eval_det_results = evaluate(dataset=data_loader_test.dataset,
+#                             predictions=predictions,
+#                             output_folder=output_folder,
+#                             **extra_args)
+
+multiple_preds = False #True
 evaluate_sg(dataset=data_loader_test.dataset,
             predictions=predictions,
             predictions_pred=predictions_pred,

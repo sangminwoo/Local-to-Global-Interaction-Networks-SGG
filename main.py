@@ -10,6 +10,8 @@ import argparse
 import numpy as np
 import torch
 import datetime
+import random
+import torch.backends.cudnn as cudnn
 
 from lib.config import cfg
 from lib.model import build_model
@@ -66,8 +68,8 @@ def train(cfg, args):
     """
     arguments = {}
     arguments["iteration"] = 0
-    model = build_model(cfg, arguments, args.local_rank, args.distributed)
-    with torch.autograd.set_detect_anomaly(False):
+    with torch.autograd.set_detect_anomaly(True):
+        model = build_model(cfg, arguments, args.local_rank, args.distributed)
         model.train()
     return model
 
@@ -84,7 +86,7 @@ def test(cfg, args, model=None):
 def main():
     ''' parse config file '''
     parser = argparse.ArgumentParser(description="Graph Reasoning Machine for Visual Question Answering")
-    parser.add_argument("--config-file", default="configs/sgg_res101_step.yaml") # baseline_res101.yaml, faster_rcnn_res101.yaml, sgg_res101_joint.yaml, sgg_res101_step.yaml
+    parser.add_argument("--config-file", default="configs/sgg_res101_step.yaml")
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument("--session", type=int, default=0)
     parser.add_argument("--resume", type=int, default=0)
@@ -93,9 +95,16 @@ def main():
     parser.add_argument("--instance", type=int, default=-1)
     parser.add_argument("--use_freq_prior", action='store_true')
     parser.add_argument("--visualize", action='store_true')
-    parser.add_argument("--algorithm", type=str, default='sg_grcnn') # sg_baseline, sg_imp, sg_msdn, sg_grcnn, sg_reldn
+    parser.add_argument("--algorithm", type=str, default='sg_grcnn')
     parser.add_argument("--multiple-preds", default=False, action='store_true')
+    parser.add_argument("--seed", default=1234, type=int)
     args = parser.parse_args()
+
+    if args.seed:
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        cudnn.deterministic = True
+        cudnn.benchmark = False
 
     num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
     args.distributed = num_gpus > 1
@@ -115,7 +124,7 @@ def main():
     if args.batchsize > 0:
         cfg.DATASET.TRAIN_BATCH_SIZE = args.batchsize
     if args.session > 0:
-        cfg.MODEL.SESSION = str(args.session)   
+        cfg.MODEL.SESSION = str(args.session)
     # cfg.freeze()
 
     if not os.path.exists("logs") and get_rank() == 0:

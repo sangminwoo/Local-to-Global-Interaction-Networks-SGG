@@ -87,55 +87,49 @@ class ResNet(nn.Module):
         # self.cfg = cfg.clone()
 
         # Translate string names to implementations
-        stem_module = _STEM_MODULES[cfg.MODEL.RESNETS.STEM_FUNC] # StemWithFixedBatchNorm
-        stage_specs = _STAGE_SPECS[cfg.MODEL.BACKBONE.CONV_BODY] # R-101-C4 -> ResNet101StagesTo4
-        transformation_module = _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC] # BottleneckWithFixedBatchNorm
+        stem_module = _STEM_MODULES[cfg.MODEL.RESNETS.STEM_FUNC]
+        stage_specs = _STAGE_SPECS[cfg.MODEL.BACKBONE.CONV_BODY]
+        transformation_module = _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC]
 
         # Construct the stem module
         self.stem = stem_module(cfg)
 
         # Constuct the specified ResNet stages
-        num_groups = cfg.MODEL.RESNETS.NUM_GROUPS # 1
-        width_per_group = cfg.MODEL.RESNETS.WIDTH_PER_GROUP # 64
-        in_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS # 64
-        stage2_bottleneck_channels = num_groups * width_per_group # 64=1*64
-        stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS # 256
+        num_groups = cfg.MODEL.RESNETS.NUM_GROUPS
+        width_per_group = cfg.MODEL.RESNETS.WIDTH_PER_GROUP
+        in_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
+        stage2_bottleneck_channels = num_groups * width_per_group
+        stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
         self.stages = []
         self.return_features = {}
-        '''
-        ResNet101StagesTo4 = tuple(
-            StageSpec(index=i, block_count=c, return_features=r)
-            for (i, c, r) in ((1, 3, False), (2, 4, False), (3, 23, True))
-        )
-        '''
         for stage_spec in stage_specs:
-            name = "layer" + str(stage_spec.index) # layer1, layer2, layer3
-            stage2_relative_factor = 2 ** (stage_spec.index - 1) # 1, 2, 4
-            bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor # 64=64*1, 128=64*2, 256=64*4
-            out_channels = stage2_out_channels * stage2_relative_factor # 256=256*1, 512=256*2, 1024=256*4
-            stage_with_dcn = cfg.MODEL.RESNETS.STAGE_WITH_DCN[stage_spec.index -1] # (False, False, False, False)
+            name = "layer" + str(stage_spec.index)
+            stage2_relative_factor = 2 ** (stage_spec.index - 1)
+            bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor
+            out_channels = stage2_out_channels * stage2_relative_factor
+            stage_with_dcn = cfg.MODEL.RESNETS.STAGE_WITH_DCN[stage_spec.index -1]
             module = _make_stage(
-                transformation_module, # BottleneckWithFixedBatchNorm
-                in_channels, # 64, 256, 512
-                bottleneck_channels, # 64, 128, 256
-                out_channels, # 256, 512, 1024
-                stage_spec.block_count, # 3, 4, 23
-                num_groups, # 1
-                cfg.MODEL.RESNETS.STRIDE_IN_1X1, # True
-                first_stride=int(stage_spec.index > 1) + 1, # 1, 2, 2
+                transformation_module,
+                in_channels,
+                bottleneck_channels,
+                out_channels,
+                stage_spec.block_count,
+                num_groups,
+                cfg.MODEL.RESNETS.STRIDE_IN_1X1,
+                first_stride=int(stage_spec.index > 1) + 1,
                 dcn_config={
-                    "stage_with_dcn": stage_with_dcn, # (False, False, False, False)
-                    "with_modulated_dcn": cfg.MODEL.RESNETS.WITH_MODULATED_DCN, # False
-                    "deformable_groups": cfg.MODEL.RESNETS.DEFORMABLE_GROUPS, # 1
+                    "stage_with_dcn": stage_with_dcn,
+                    "with_modulated_dcn": cfg.MODEL.RESNETS.WITH_MODULATED_DCN,
+                    "deformable_groups": cfg.MODEL.RESNETS.DEFORMABLE_GROUPS,
                 }
             )
-            in_channels = out_channels # 64->256, 256->512
-            self.add_module(name, module) # layer1, layer2, layer3
-            self.stages.append(name) # layer1, layer2, layer3
-            self.return_features[name] = stage_spec.return_features # False, False, True
+            in_channels = out_channels
+            self.add_module(name, module)
+            self.stages.append(name)
+            self.return_features[name] = stage_spec.return_features
 
         # Optionally freeze (requires_grad=False) parts of the backbone
-        self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_CONV_BODY_AT) # 2
+        self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_CONV_BODY_AT)
 
     def _freeze_backbone(self, freeze_at):
         if freeze_at < 0:
@@ -150,7 +144,7 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         outputs = []
-        x = self.stem(x) # StemWithFixedBatchNorm
+        x = self.stem(x)
         for stage_name in self.stages:
             x = getattr(self, stage_name)(x)
             if self.return_features[stage_name]:
@@ -173,71 +167,68 @@ class ResNetHead(nn.Module):
     ):
         super(ResNetHead, self).__init__()
 
-        stage2_relative_factor = 2 ** (stages[0].index - 1) # 2**(4-1)=8
-        stage2_bottleneck_channels = num_groups * width_per_group # 1*64=64 
-        out_channels = res2_out_channels * stage2_relative_factor # 256*8=2048
-        in_channels = out_channels // 2 # 1024
-        bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor # 64*8=512
+        stage2_relative_factor = 2 ** (stages[0].index - 1)
+        stage2_bottleneck_channels = num_groups * width_per_group
+        out_channels = res2_out_channels * stage2_relative_factor
+        in_channels = out_channels // 2
+        bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor
 
-        block_module = _TRANSFORMATION_MODULES[block_module] # BottleneckWithFixedBatchNorm
+        block_module = _TRANSFORMATION_MODULES[block_module]
 
         self.stages = []
-        stride = stride_init # None
-        for stage in stages: # (index=4, block_count=3, return_features=False)
-            name = "layer" + str(stage.index) # layer4
-            if not stride: # None
-                stride = int(stage.index > 1) + 1 # 2
+        stride = stride_init
+        for stage in stages:
+            name = "layer" + str(stage.index)
+            if not stride:
+                stride = int(stage.index > 1) + 1
             module = _make_stage(
-                block_module, # BottleneckWithFixedBatchNorm
-                in_channels, # 1024
-                bottleneck_channels, # 512
-                out_channels, # 2048
-                stage.block_count, # 3
-                num_groups, # 1
-                stride_in_1x1, # True
-                first_stride=stride, # 2
-                dilation=dilation, # 1
-                dcn_config=dcn_config # {}
+                block_module,
+                in_channels,
+                bottleneck_channels,
+                out_channels,
+                stage.block_count,
+                num_groups,
+                stride_in_1x1,
+                first_stride=stride,
+                dilation=dilation,
+                dcn_config=dcn_config
             )
             stride = None
-            self.add_module(name, module) # layer4, module
-            self.stages.append(name) # layer4
-        self.out_channels = out_channels # 2048
+            self.add_module(name, module)
+            self.stages.append(name)
+        self.out_channels = out_channels
 
     def forward(self, x):
-        for stage in self.stages: # layer4
-            x = getattr(self, stage)(x) 
-        return x # 1024x2048x14x14 <- 1024x1024x14x14
+        for stage in self.stages:
+            x = getattr(self, stage)(x)
+        return x
+
 
 def _make_stage(
-    transformation_module, # BottleneckWithFixedBatchNorm
-    in_channels, # 64, 256, 512
-    bottleneck_channels, # 64, 128, 256
-    out_channels, # 256, 512, 1024
-    block_count, # 3, 4, 23
-    num_groups, # 1
-    stride_in_1x1, # True
-    first_stride, # 1, 2, 2
+    transformation_module,
+    in_channels,
+    bottleneck_channels,
+    out_channels,
+    block_count,
+    num_groups,
+    stride_in_1x1,
+    first_stride,
     dilation=1,
-    dcn_config={} # "stage_with_dcn": stage_with_dcn
-                  # "with_modulated_dcn": cfg.MODEL.RESNETS.WITH_MODULATED_DCN, # False
-                  # "deformable_groups": cfg.MODEL.RESNETS.DEFORMABLE_GROUPS, # 1
+    dcn_config={}
 ):
     blocks = []
-    stride = first_stride # 1, 2, 2
-    for _ in range(block_count): # 3, 4, 23
+    stride = first_stride
+    for _ in range(block_count):
         blocks.append(
             transformation_module(
-                in_channels, # 64, 256, 512
-                bottleneck_channels, # 64, 128, 256
-                out_channels, # 256, 512, 1024
-                num_groups, # 1
-                stride_in_1x1, # True
-                stride, # 1, 2, 3
-                dilation=dilation, # 1
-                dcn_config=dcn_config # "stage_with_dcn": stage_with_dcn
-                                      # "with_modulated_dcn": cfg.MODEL.RESNETS.WITH_MODULATED_DCN, # False
-                                      # "deformable_groups": cfg.MODEL.RESNETS.DEFORMABLE_GROUPS, # 1
+                in_channels,
+                bottleneck_channels,
+                out_channels,
+                num_groups,
+                stride_in_1x1,
+                stride,
+                dilation=dilation,
+                dcn_config=dcn_config
             )
         )
         stride = 1

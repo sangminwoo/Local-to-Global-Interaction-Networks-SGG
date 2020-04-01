@@ -114,7 +114,8 @@ class Normalize(object):
 
     def __call__(self, image, target=None):
         if self.to_bgr255:
-            image = image[[2, 1, 0]] * 255
+            image = image * 255
+            # image = image[[2, 1, 0]] * 255
         image = F.normalize(image, mean=self.mean, std=self.std)
         if target is None:
             return image

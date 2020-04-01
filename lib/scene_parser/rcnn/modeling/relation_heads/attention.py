@@ -64,15 +64,28 @@ class AttentionGate(nn.Module):
 
 class InstanceAttention(nn.Module):
 	def __init__(self, in_channels=1024, reduction_ratio=128, kernel_size=3):
-		self.subj_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
-        self.obj_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
-        self.bg_att = AttentionGate(in_channels=1024, reduction_ratio=128, kernel_size=3)
+		super(InstanceAttention, self).__init__()
+		self.subj_att = AttentionGate(
+			in_channels=in_channels,
+			reduction_ratio=reduction_ratio,
+			kernel_size=kernel_size
+		)
+		self.obj_att = AttentionGate(
+			in_channels=in_channels,
+			reduction_ratio=reduction_ratio,
+			kernel_size=kernel_size
+		)
+		self.bg_att = AttentionGate(
+			in_channels=in_channels,
+			reduction_ratio=reduction_ratio,
+			kernel_size=kernel_size
+		)
 
-    def forward(self, subj, obj, bg):
-    	subj_att = self.subj_att(subj)
-    	obj_att = self.obj_att(obj)
-    	bg_att = self.bg_att(bg)
-    	return subj_att, obj_att, bg_att
+	def forward(self, subj, obj, bg):
+		subj_att = self.subj_att(subj)
+		obj_att = self.obj_att(obj)
+		bg_att = self.bg_att(bg)
+		return subj_att, obj_att, bg_att
 
 class SpatialGateV2(nn.Module):
 	'''

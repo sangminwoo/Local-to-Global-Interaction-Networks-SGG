@@ -9,11 +9,11 @@ class FastRCNNPredictor(nn.Module):
         super(FastRCNNPredictor, self).__init__()
         assert in_channels is not None
 
-        num_inputs = in_channels # 1024
+        num_inputs = in_channels
 
-        num_classes = config.MODEL.ROI_BOX_HEAD.NUM_CLASSES # 151
+        num_classes = config.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.cls_score = nn.Linear(num_inputs, num_classes) # 1024 x 151
+        self.cls_score = nn.Linear(num_inputs, num_classes)
         # num_bbox_reg_classes = 2 if config.MODEL.CLS_AGNOSTIC_BBOX_REG else num_classes
         # self.bbox_pred = nn.Linear(num_inputs, num_bbox_reg_classes * 4)
 
@@ -24,9 +24,9 @@ class FastRCNNPredictor(nn.Module):
         # nn.init.constant_(self.bbox_pred.bias, 0)
 
     def forward(self, x):
-        x = self.avgpool(x) # Nx1024x1x1
-        x = x.view(x.size(0), -1) # Nx1024
-        cls_logit = self.cls_score(x) # Nx151
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        cls_logit = self.cls_score(x)
         return cls_logit
         # bbox_pred = self.bbox_pred(x)
         # return cls_logit, bbox_pred
@@ -58,6 +58,6 @@ class FPNPredictor(nn.Module):
         return scores, bbox_deltas
 
 
-def make_roi_relation_box_predictor(cfg, in_channels): # 1024
-    func = registry.ROI_RELATION_BOX_PREDICTOR[cfg.MODEL.ROI_BOX_HEAD.PREDICTOR] # FastRCNNPredictor
+def make_roi_relation_box_predictor(cfg, in_channels):
+    func = registry.ROI_RELATION_BOX_PREDICTOR[cfg.MODEL.ROI_BOX_HEAD.PREDICTOR]
     return func(cfg, in_channels)

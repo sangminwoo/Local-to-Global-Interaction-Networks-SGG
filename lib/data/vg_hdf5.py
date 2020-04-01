@@ -13,11 +13,12 @@ from lib.scene_parser.rcnn.structures.bounding_box import BoxList
 from lib.utils.box import bbox_overlaps
 
 class vg_hdf5(Dataset):
-    def __init__(self, cfg, split="train", transforms=None, num_im=-1, num_val_im=5000,
+    def __init__(self, cfg, split="train", transforms=None, num_im=-1, num_val_im=0,
             filter_duplicate_rels=True, filter_non_overlap=True, filter_empty_rels=True):
-        assert split in ["train", "test"], "split must be one of [train, val, test]"
+        assert split in ['train', 'val', 'test'], "split must be one of [train, val, test]"
         assert num_im >= -1, "the number of samples must be >= 0"
 
+        # split = 'train' if split == 'test' else 'test'
         self.data_dir = cfg.DATASET.PATH
         self.transforms = transforms
 
@@ -48,8 +49,7 @@ class vg_hdf5(Dataset):
                                   self.predicate_to_ind[k])
         # cfg.ind_to_predicate = self.ind_to_predicates
 
-        self.split_mask, self.image_index, self.im_sizes, \
-        self.gt_boxes, self.gt_classes, self.relationships = load_graphs(
+        self.split_mask, self.image_index, self.im_sizes, self.gt_boxes, self.gt_classes, self.relationships = load_graphs(
             self.roidb_file, self.image_file,
             self.split, num_im, num_val_im=num_val_im,
             filter_empty_rels=filter_empty_rels,
@@ -136,7 +136,6 @@ class vg_hdf5(Dataset):
         target.add_field("pred_labels", torch.from_numpy(obj_relations))
         target.add_field("relation_labels", torch.from_numpy(obj_relation_triplets))
         target = target.clip_to_image(remove_empty=False)
-        # object bbox, labels, pred_labels, relation_labels
 
         return img, target, index
 
@@ -222,7 +221,6 @@ def load_graphs(graphs_file, images_file, mode='train', num_im=-1, num_val_im=0,
         elif mode == 'train':
             image_index = image_index[num_val_im:]
 
-
     split_mask = np.zeros_like(data_split).astype(bool)
     split_mask[image_index] = True
 
@@ -256,6 +254,7 @@ def load_graphs(graphs_file, images_file, mode='train', num_im=-1, num_val_im=0,
     boxes = []
     gt_classes = []
     relationships = []
+
     for i in range(len(image_index)):
         boxes_i = all_boxes[im_to_first_box[i]:im_to_last_box[i] + 1, :]
         gt_classes_i = all_labels[im_to_first_box[i]:im_to_last_box[i] + 1]

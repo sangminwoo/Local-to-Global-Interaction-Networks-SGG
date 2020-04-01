@@ -125,7 +125,7 @@ class SceneGraphGeneration:
         for i, data in enumerate(self.data_loader_train, start_iter):
             data_time = time.time() - end
             self.arguments["iteration"] = i
-            #self.sp_scheduler.step()
+            
             imgs, targets, _ = data
             imgs = imgs.to(self.device); targets = [target.to(self.device) for target in targets]
             loss_dict = self.scene_parser(imgs, targets)
@@ -140,7 +140,6 @@ class SceneGraphGeneration:
             losses.backward()
             self.sp_optimizer.step()
             self.sp_scheduler.step()
-            
             batch_time = time.time() - end
             end = time.time()
             meters.update(time=batch_time, data=data_time)
@@ -241,8 +240,10 @@ class SceneGraphGeneration:
                     torch.cuda.synchronize()
                     timer.toc()
                 output = [o.to(cpu_device) for o in output]
+
                 if visualize:
                     self.visualize_detection(self.data_loader_test.dataset, image_ids, imgs, output)
+
             results_dict.update(
                 {img_id: result for img_id, result in zip(image_ids, output)}
             )
@@ -287,7 +288,7 @@ class SceneGraphGeneration:
                 torch.save(predictions_pred, os.path.join(output_folder, "predictions_pred.pth"))
 
         extra_args = dict(
-            box_only=False if self.cfg.MODEL.RETINANET_ON else self.cfg.MODEL.RPN_ONLY, # False / False
+            box_only=False if self.cfg.MODEL.RETINANET_ON else self.cfg.MODEL.RPN_ONLY,
             iou_types=("bbox",),
             expected_results=self.cfg.TEST.EXPECTED_RESULTS,
             expected_results_sigma_tol=self.cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,

@@ -1,41 +1,30 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from .utils import box_pos_encoder
+from ..auxilary.multi_head_att import MultiHeadAttention
 
 class Relationshipness(nn.Module):
     """
     compute relationshipness between subjects and objects
     """
-    def __init__(self, vis_dim, num_classes, pos_encoding=True):
+    def __init__(self, dim, pos_encoding=False):
         super(Relationshipness, self).__init__()
 
-        self.vis_subj = nn.Sequential(
-            nn.Linear(vis_dim, 64),
+        self.subj_proj = nn.Sequential(
+            nn.Linear(dim, 64),
             nn.ReLU(True),
             nn.Linear(64, 64)
         )
 
-        self.vis_obj = nn.Sequential(
-            nn.Linear(vis_dim, 64),
+        self.obj_prof = nn.Sequential(
+            nn.Linear(dim, 64),
             nn.ReLU(True),
             nn.Linear(64, 64)
         )
 
-        self.logit_subj = nn.Sequential(
-            nn.Linear(num_classes, 64),
-            nn.ReLU(True),
-            nn.Linear(64, 64)
-        )
-
-        self.logit_obj = nn.Sequential(
-            nn.Linear(num_classes, 64),
-            nn.ReLU(True),
-            nn.Linear(64, 64)
-        )
-
-        self.pos_encoding = pos_encoding
-        if self.pos_encoding:
+        self.pos_encoding = False
+        if pos_encoding:
+            self.pos_encoding = True
             self.sub_pos_encoder = nn.Sequential(
                 nn.Linear(6, 64),
                 nn.ReLU(True),
@@ -48,27 +37,77 @@ class Relationshipness(nn.Module):
                 nn.Linear(64, 64)
             )
 
-    def forward(self, features, logits, bbox=None, imsize=None):
-        #features = F.avg_pool2d(features, kernel_size=(features.size(2), features.size(3))).squeeze() # 256x1024xHxW -> 256x1024x1x1 -> 256x1024
-
-        #feats_subj = self.vis_subj(features) # k x 64
-        #feats_obj = self.vis_obj(features) # k x 64
-        #feats_scores = torch.mm(feats_subj, feats_obj.t()) # k x k
-        #feats_scores = torch.sigmoid(feats_scores)
-
-        logits_subj = self.logit_subj(logits) # k x 64
-        logits_obj = self.logit_obj(logits)   # k x 64
-        logits_scores = torch.mm(logits_subj, logits_obj.t()) # k x k
-        
-        score = logits_scores
-
+    def forward(self, x, bbox=None, imsize=None):
+        x_subj = self.subj_proj(x) # k x 64
+        x_obj = self.obj_prof(x)   # k x 64
+        scores = torch.mm(x_subj, x_obj.t()) # k x k
         if self.pos_encoding:
             pos = box_pos_encoder(bbox, imsize[0], imsize[1])
             pos_subj = self.sub_pos_encoder(pos)
             pos_obj = self.obj_pos_encoder(pos)
             pos_scores = torch.mm(pos_subj, pos_obj.t()) # k x k
+            scores = scores + pos_scores
+        relness = torch.sigmoid(scores)      # k x k
+        return relness
 
-            score = logits_scores + pos_scores
+class Relationshipnessv2(nn.Module):
+    """
+    compute relationshipness between subjects and objects
+    """
+    def __init__(self, dim, pos_encoding=False):
+        super(Relationshipnessv2, self).__init__()
 
-        relness = torch.sigmoid(score)
-        return relness # k x k
+        self.subj_proj = nn.Sequential(
+            nn.Linear(dim, 64),
+            nn.ReLU(True),
+            nn.Linear(64, 64)
+        )
+
+        self.obj_proj = nn.Sequential(
+            nn.Linear(dim, 64),
+            nn.ReLU(True),
+            nn.Linear(64, 64)
+        )
+
+        self.pos_encoding = False
+        if pos_encoding:
+            self.pos_encoding = True
+            self.sub_pos_encoder = nn.Sequential(
+                nn.Linear(6, 64),
+                nn.ReLU(True),
+                nn.Linear(64, 64)
+            )
+
+            self.obj_pos_encoder = nn.Sequential(
+                nn.Linear(6, 64),
+                nn.ReLU(True),
+                nn.Linear(64, 64)
+            )
+
+        # using context to modulate the relationshipness scores
+        self.self_att_subj = MultiHeadAttention(8, 64)
+        self.self_att_obj = MultiHeadAttention(8, 64)
+
+        self.self_att_pos_subj = MultiHeadAttention(8, 64)
+        self.self_att_pos_obj = MultiHeadAttention(8, 64)
+
+    def forward(self, x, bbox=None, imsize=None):
+        x_subj = self.subj_proj(x) # k x 64
+        x_subj = self.self_att_subj(x_subj, x_subj, x_subj).squeeze(1)
+
+        x_obj = self.obj_proj(x)   # k x 64
+        x_obj = self.self_att_obj(x_obj, x_obj, x_obj).squeeze(1)
+
+        scores = torch.mm(x_subj, x_obj.t()) # k x k
+        if self.pos_encoding:
+            pos = box_pos_encoder(bbox, imsize[0], imsize[1])
+            pos_subj = self.sub_pos_encoder(pos)
+            pos_subj = self.self_att_pos_subj(pos_subj, pos_subj, pos_subj).squeeze(1)
+
+            pos_obj = self.obj_pos_encoder(pos)
+            pos_obj = self.self_att_pos_obj(pos_obj, pos_obj, pos_obj).squeeze(1)
+
+            pos_scores = torch.mm(pos_subj, pos_obj.t()) # k x k
+            scores = scores + pos_scores
+        relness = torch.sigmoid(scores)      # k x k
+        return relness

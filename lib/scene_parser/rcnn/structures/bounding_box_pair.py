@@ -1,13 +1,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
-import torch.nn as nn
 from .bounding_box import BoxList
 # transpose
 FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
 
 
-class BoxPairList(object):
+class BoxPairList(object): 
     """
     This class represents a set of bounding boxes.
     The bounding boxes are represented as a Nx4 Tensor.
@@ -261,87 +260,19 @@ class BoxPairList(object):
         return bbox
 
     def copy_with_union(self):
-        x1 = self.bbox[:, 0::4].min(dim=1)[0].view(-1, 1) # x1
-        y1 = self.bbox[:, 1::4].min(dim=1)[0].view(-1, 1) # y1
-        x2 = self.bbox[:, 2::4].max(dim=1)[0].view(-1, 1) # x2
-        y2 = self.bbox[:, 3::4].max(dim=1)[0].view(-1, 1) # y2
+        x1 = self.bbox[:, 0::4].min(1)[0].view(-1, 1) # x1
+        y1 = self.bbox[:, 1::4].min(1)[0].view(-1, 1) # y1
+        x2 = self.bbox[:, 2::4].max(1)[0].view(-1, 1) # x2
+        y2 = self.bbox[:, 3::4].max(1)[0].view(-1, 1) # y2
         bbox = BoxList(torch.cat((x1, y1, x2, y2), 1), self.size, self.mode)
         return bbox
 
-    '''separate bounding boxes position'''
     def copy_with_separate(self):
-        assert self.bbox.size(-1)==8, \
-            f'bounding box pair size should be 8, got {self.bbox.size(-1)}'
         box1 = self.bbox[:, :4] # Nx8 -> Nx4 (obj1)
         box2 = self.bbox[:, 4:] # Nx8 -> Nx4 (obj2)
         boxlist1 = BoxList(box1, self.size, self.mode) # BoxList(Nx4, WxH, 'xyxy')
         boxlist2 = BoxList(box2, self.size, self.mode) # BoxList(Nx4, WxH, 'xyxy')
         return boxlist1, boxlist2
-
-    # def relativity_embedding(self):
-    #     #assert type(self.size[0])==float and type(self.size[1])==float, 'type of size should be float'
-    #     box1_xyxy = self.bbox[:, :4] # xmin_1, ymin_1, xmax_1, ymax_1
-    #     box2_xyxy = self.bbox[:, 4:] # xmin_2, ymin_2, xmax_2, ymax_2
-        
-    #     # Convert (x_min, y_min, x_max, y_max) to (x_center, y_center, width, height)
-    #     box1_w, box1_h = \
-    #         box1_xyxy[:, 2::4] - box1_xyxy[:, 0::4], box1_xyxy[:, 3::4] - box1_xyxy[:, 1::4] # Nx1, Nx1
-    #     box2_w, box2_h = \
-    #         box2_xyxy[:, 2::4] - box2_xyxy[:, 0::4], box2_xyxy[:, 3::4] - box2_xyxy[:, 1::4] # Nx1, Nx1
-    #     box1_xc, box1_yc = box1_xyxy[:, 0::4] + box1_w / 2, box1_xyxy[:, 1::4] + box1_h / 2 # Nx1, Nx1
-    #     box2_xc, box2_yc = box2_xyxy[:, 0::4] + box2_w / 2, box2_xyxy[:, 1::4] + box2_h / 2 # Nx1, Nx1
-    #     box1_xywh = torch.cat((box1_xc, box1_yc, box1_w, box1_h), dim=1) # xc_1, yc_1, w1, h1
-    #     box2_xywh = torch.cat((box2_xc, box2_yc, box2_w, box2_h), dim=1) # xc_2, yc_2, w2, h2
-
-    #     '''
-    #     bounding box relative position
-    #         left top: (xmin_2-xmin_1, ymin_2-ymin_1)
-    #         right top: (xmax_2-xmax_1, ymin_2-ymin_1)
-    #         left bottom: (xmin_2-xmin_1, ymax_2-y_max_1)
-    #         right bottom: (xmax_2-xmax_1, ymax_2-ymax_1)
-    #         center: (xc_2-xc_1, yc_2-yc_1)
-    #     '''
-    #     w, h = float(self.size[0]), float(self.size[1])
-    #     xyxy_diff = box2_xyxy - box1_xyxy # Nx4
-    #     xmin_diff, ymin_diff, xmax_diff, ymax_diff = \
-    #         xyxy_diff[:,0].view(-1, 1), xyxy_diff[:,1].view(-1, 1), \
-    #         xyxy_diff[:,2].view(-1, 1), xyxy_diff[:,3].view(-1, 1) # Nx1, Nx1, Nx1, Nx1
-     
-    #     xywh_diff = box2_xywh - box1_xywh # Nx4
-    #     xc_diff, yc_diff = \
-    #         xywh_diff[:,0].view(-1, 1), xywh_diff[:,1].view(-1, 1) # Nx1, Nx1
-        
-    #     lt = torch.cat((xmin_diff/w, ymin_diff/h), dim=1) # Nx2
-    #     rt = torch.cat((xmax_diff/w, ymin_diff/h), dim=1) # Nx2
-    #     lb = torch.cat((xmin_diff/w, ymax_diff/h), dim=1) # Nx2
-    #     rb = torch.cat((xmax_diff/w, ymax_diff/h), dim=1) # Nx2
-    #     ctr = torch.cat((xc_diff/w, yc_diff/h), dim=1) # Nx2
-
-    #     '''
-    #     bounding box relative area
-    #         portion: (box1_area/total_area, box2_area/total_area)
-    #     '''
-    #     total_area = w * h
-    #     # box1_w, box1_h = box1_xywh[:, 2::4], box1_xywh[:, 3::4] # Nx1, Nx1
-    #     # box2_w, box2_h = box2_xywh[:, 2::4], box2_xywh[:, 3::4] # Nx1, Nx1
-    #     box1_area = box1_w * box1_h # Nx1
-    #     box2_area = box2_w * box2_h # Nx1
-    #     portion1 = box1_area / total_area # Nx1
-    #     portion2 = box2_area / total_area # Nx1
-    #     portion = torch.cat((portion1, portion2), dim=1) # Nx2
-
-    #     rel_features = torch.stack((lt, rt, lb, rb, ctr, portion), dim=2) # Nx2x6
-    #     #print(rel_features)
-
-    #     # relatvity Embedding
-    #     rel_embedding = nn.Sequential(
-    #                         nn.Linear(6, 64),
-    #                         nn.ReLU(inplace=True),
-    #                         nn.Linear(64, 64),
-    #                     ).to(rel_features.device) # Nx2x64
-
-    #     out = rel_embedding(rel_features) # Nx2x64
-    #     return out # Nx2x64
 
     def __repr__(self):
         s = self.__class__.__name__ + "("
@@ -353,15 +284,11 @@ class BoxPairList(object):
 
 
 if __name__ == "__main__":
-    #bbox = BoxPairList([[0, 0, 10, 10], [0, 0, 5, 5]], (10, 10))
-    bbox = BoxPairList([[0, 0, 10, 10, 0, 0, 5, 5], [1, 2, 8, 5, 2, 4, 9, 7]], (10, 10))
+    bbox = BoxPairList([[0, 0, 10, 10], [0, 0, 5, 5]], (10, 10))
     s_bbox = bbox.resize((5, 5))
     print(s_bbox)
     print(s_bbox.bbox)
 
-
-    '''
-    t_bbox = bbox.transpose(1)
+    t_bbox = bbox.transpose(0)
     print(t_bbox)
     print(t_bbox.bbox)
-    '''

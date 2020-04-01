@@ -12,11 +12,11 @@ from lib.scene_parser.rcnn import _C
 class _ROIAlign(Function):
     @staticmethod
     def forward(ctx, input, roi, output_size, spatial_scale, sampling_ratio):
-        ctx.save_for_backward(roi) # Tensor(1024x5)
-        ctx.output_size = _pair(output_size) # (14, 14)
-        ctx.spatial_scale = spatial_scale # 1.0/16
-        ctx.sampling_ratio = sampling_ratio # 0
-        ctx.input_shape = input.size() # Tensor(4x1024x48x64)
+        ctx.save_for_backward(roi)
+        ctx.output_size = _pair(output_size)
+        ctx.spatial_scale = spatial_scale
+        ctx.sampling_ratio = sampling_ratio
+        ctx.input_shape = input.size()
         output = _C.roi_align_forward(
             input, roi, spatial_scale, output_size[0], output_size[1], sampling_ratio
         )
@@ -50,9 +50,9 @@ roi_align = _ROIAlign.apply
 class ROIAlign(nn.Module):
     def __init__(self, output_size, spatial_scale, sampling_ratio):
         super(ROIAlign, self).__init__()
-        self.output_size = output_size # (14, 14)
-        self.spatial_scale = spatial_scale # 1.0/16
-        self.sampling_ratio = sampling_ratio # 0
+        self.output_size = output_size
+        self.spatial_scale = spatial_scale
+        self.sampling_ratio = sampling_ratio
 
     # @amp.float_function
     def forward(self, input, rois):

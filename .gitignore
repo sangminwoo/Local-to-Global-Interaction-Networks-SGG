@@ -3,6 +3,8 @@ detection_*.jpg
 *.h5
 *.npy
 *.pth
+*.zip
+glove*
 logs/
 last_checkpoint
 

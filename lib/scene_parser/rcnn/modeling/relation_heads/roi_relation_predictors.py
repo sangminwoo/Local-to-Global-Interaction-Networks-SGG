@@ -10,19 +10,19 @@ class FastRCNNPredictor(nn.Module):
         super(FastRCNNPredictor, self).__init__()
         assert in_channels is not None
 
-        num_inputs = in_channels # 1024
+        num_inputs = in_channels
 
-        num_classes = config.MODEL.ROI_RELATION_HEAD.NUM_CLASSES # 51
+        num_classes = config.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.cls_score = nn.Linear(num_inputs, num_classes) # 1024 x 51
+        self.cls_score = nn.Linear(num_inputs, num_classes)
         # self.cls_score.weight = torch.nn.init.xavier_normal(self.cls_score.weight, gain=1.0)
         nn.init.normal_(self.cls_score.weight, mean=0, std=0.01)
         nn.init.constant_(self.cls_score.bias, 0)
 
     def forward(self, x):
-        x = self.avgpool(x) # Nx1024x1x1
-        x = x.view(x.size(0), -1) # Nx1024
-        cls_logit = self.cls_score(x) # Nx51
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        cls_logit = self.cls_score(x)
         return cls_logit
 
 
@@ -52,6 +52,6 @@ class FPNPredictor(nn.Module):
         return scores, bbox_deltas
 
 
-def make_roi_relation_predictor(cfg, in_channels): # 1024
-    func = registry.ROI_RELATION_PREDICTOR[cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR] # FastRCNNRelationPredictor
-    return func(cfg, in_channels) # 1024
+def make_roi_relation_predictor(cfg, in_channels):
+    func = registry.ROI_RELATION_PREDICTOR[cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR]
+    return func(cfg, in_channels)

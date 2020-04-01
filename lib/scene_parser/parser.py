@@ -2,10 +2,11 @@
 Main code of scene parser
 """
 import os
-import copy
 import logging
 import torch
+import copy
 import torch.nn as nn
+# from apex.parallel import DistributedDataParallel as DDP
 
 from .rcnn.modeling.detector.generalized_rcnn import GeneralizedRCNN
 from .rcnn.solver import make_lr_scheduler
@@ -14,7 +15,6 @@ from .rcnn.utils.checkpoint import SceneParserCheckpointer
 from .rcnn.structures.image_list import to_image_list
 from .rcnn.utils.comm import synchronize, get_rank
 from .rcnn.modeling.relation_heads.relation_heads import build_roi_relation_head
-from lib.scene_parser.rcnn.modeling.relation_heads.non_local import nonlocal_block
 
 SCENE_PAESER_DICT = ["sg_baseline", "sg_imp", "sg_msdn", "sg_grcnn", "sg_reldn"]
 
@@ -25,11 +25,10 @@ class SceneParser(GeneralizedRCNN):
         self.cfg = cfg
 
         self.rel_heads = None
-        self.non_local = nonlocal_block(in_channels=1024, reduction_ratio=2, maxpool=False, use_bn=False)
         if cfg.MODEL.RELATION_ON and self.cfg.MODEL.ALGORITHM in SCENE_PAESER_DICT:
-            self.rel_heads = build_roi_relation_head(cfg, self.backbone.out_channels) # 1024
+            self.rel_heads = build_roi_relation_head(cfg, self.backbone.out_channels)
         self._freeze_components(self.cfg)
-       
+
     def _freeze_components(self, cfg):
         if cfg.MODEL.BACKBONE.FREEZE_PARAMETER:
             for param in self.backbone.parameters():
@@ -114,50 +113,22 @@ class SceneParser(GeneralizedRCNN):
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
         images = to_image_list(images)
-        features = self.backbone(images.tensors) # list[1 x Tensor(4x1024x48x64)]
-        features = [self.non_local(feature) for feature in features] # list[1 x Tensor(4x1024x48x64)]
-        '''
-        images.tensors.shape: torch.Size([4, 3, 768, 1024])
-        images.image_size: [torch.Size([681, 1024]), torch.Size([768, 1024]), torch.Size([679, 1024]), torch.Size([681, 1024])]
-
-        targets[0].bbox:
-                        tensor([[   0.,   20., 1022.,  670.],
-                                [ 110.,  391.,  154.,  467.],
-                                [  12.,  587., 1018.,  665.],
-                                [ 271.,  442.,  808.,  582.],
-                                [ 352.,  497.,  400.,  549.],
-                                [ 481.,  489.,  551.,  543.],
-                                [ 311.,  501.,  357.,  547.],
-                                [ 561.,  479.,  633.,  541.],
-                                [ 882.,  423.,  938.,  469.],
-                                [ 759.,  489.,  819.,  533.],
-                                [ 757.,  433.,  805.,  474.],
-                                [ 888.,  483.,  944.,  531.],
-                                [ 210.,  123.,  292.,  214.],
-                                [ 586.,  295.,  691.,  388.],
-                                [ 267.,  120.,  284.,  262.],
-                                [ 207.,  141.,  300.,  193.],
-                                [ 242.,  182., 1015.,  674.]])
-        '''
-
+        features = self.backbone(images.tensors)
         proposals, proposal_losses = self.rpn(images, features, targets)
-        scene_parser_losses = {}
-        if self.roi_heads: # True
-            # targets: list[4 x BoxList[Tensor(9x4)]] # 9, 16, 10, ...
-            x, detections, roi_heads_loss = self.roi_heads(features, proposals, targets)
-            # x: Tensor(1024x2048x7x7)
-            # detections: list[4 x BoxList[Tensor(256x4)]] 
 
+        scene_parser_losses = {}
+        if self.roi_heads:
+            x, detections, roi_heads_loss = self.roi_heads(features, proposals, targets)
             result = detections
             scene_parser_losses.update(roi_heads_loss)
 
-            if self.rel_heads: # True
-                relation_features = features # list[1 x Tensor(4x1024x48x64)]
+            if self.rel_heads:
+                relation_features = features
                 # optimization: during training, if we share the feature extractor between
                 # the box and the relation heads, then we can reuse the features already computed
                 if (
                     self.training
-                    and self.cfg.MODEL.ROI_RELATION_HEAD.SHARE_BOX_FEATURE_EXTRACTOR # False
+                    and self.cfg.MODEL.ROI_RELATION_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
                 ):
                     relation_features = x
                 # During training, self.box() will return the unaltered proposals as "detections"
@@ -206,14 +177,8 @@ def build_scene_parser(cfg):
 def build_scene_parser_optimizer(cfg, model, local_rank=0, distributed=False):
     save_to_disk = True
     save_dir = get_save_dir(cfg)
-    optimizer = make_optimizer(cfg, model) # SGD
-    scheduler = make_lr_scheduler(cfg, optimizer) # WarmupMultiStepLR
-    if distributed:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank], output_device=local_rank,
-            # this should be removed if we update BatchNorm stats
-            broadcast_buffers=False,
-        )
+    optimizer = make_optimizer(cfg, model)
+    scheduler = make_lr_scheduler(cfg, optimizer)
     save_to_disk = get_rank() == 0
     checkpointer = SceneParserCheckpointer(cfg, model, optimizer, scheduler, save_dir, save_to_disk,
         logger=logging.getLogger("scene_graph_generation.checkpointer"))
@@ -222,4 +187,11 @@ def build_scene_parser_optimizer(cfg, model, local_rank=0, distributed=False):
     if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOXES:
         model.rel_heads.box_feature_extractor.load_state_dict(model.roi_heads.box.feature_extractor.state_dict())
         model.rel_heads.box_predictor.load_state_dict(model.roi_heads.box.predictor.state_dict())
+    if distributed:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[local_rank], output_device=local_rank,
+            # this should be removed if we update BatchNorm stats
+            broadcast_buffers=False,
+        )
+        # model = DDP(model, delay_allreduce=True)
     return optimizer, scheduler, checkpointer, extra_checkpoint_data

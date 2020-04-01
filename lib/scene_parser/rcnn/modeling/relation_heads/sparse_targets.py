@@ -84,6 +84,7 @@ def _get_rel_inds(im_inds, im_inds_pairs, proposal_idx_pairs):
     num_obj_im = torch.unique(im_inds)
     # cum sum torch.cumsum. this is the raw value for offsets
     num_obj_im = torch.cumsum(num_obj_im, dim=0)
+
     # im_inds -1 for offset value
     # then set 0-th image has offset 0
     rel_ind_offset_im = num_obj_im[im_inds_pairs - 1]
@@ -94,4 +95,4 @@ def _get_rel_inds(im_inds, im_inds_pairs, proposal_idx_pairs):
 
     rel_ind_sub += rel_ind_offset_im
     rel_ind_obj += rel_ind_offset_im
-    return torch.cat((rel_ind_sub[:, None], rel_ind_obj[:, None]), 1) # 1024x2
+    return torch.cat((rel_ind_sub[:, None], rel_ind_obj[:, None]), 1)

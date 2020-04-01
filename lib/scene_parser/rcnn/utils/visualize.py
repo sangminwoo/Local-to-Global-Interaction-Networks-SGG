@@ -40,12 +40,13 @@ def overlay_boxes(image, predictions):
     boxes = predictions.bbox
 
     colors = compute_colors_for_labels(labels).tolist()
+    thickness = 2.5
 
     for box, color in zip(boxes, colors):
         box = box.to(torch.int64)
         top_left, bottom_right = box[:2].tolist(), box[2:].tolist()
         image = cv2.rectangle(
-            image, tuple(top_left), tuple(bottom_right), tuple(color), 1
+            image, tuple(top_left), tuple(bottom_right), tuple(color), thickness
         )
 
     return image
@@ -59,18 +60,27 @@ def overlay_class_names(image, predictions, categories):
         predictions (BoxList): the result of the computation by the model.
             It should contain the field `scores` and `labels`.
     """
-    scores = predictions.get_field("scores").tolist()
+    # scores = predictions.get_field("scores").tolist()
     labels = predictions.get_field("labels").tolist()
     labels = [categories[i] for i in labels]
     boxes = predictions.bbox
 
-    template = "{}: {:.2f}"
-    for box, score, label in zip(boxes, scores, labels):
+    template = "{}"
+    offset_x = 3; offset_y = 14
+    for box, label in zip(boxes, labels):
         x, y = box[:2]
-        s = template.format(label, score)
+        s = template.format(label)
         cv2.putText(
-            image, s, (x, y), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), 1
+            image, s, (x+offset_x, y+offset_y), cv2.FONT_HERSHEY_DUPLEX, .5, (255, 255, 255), 1
         )
+
+    # template = "{}: {:.2f}"
+    # for box, score, label in zip(boxes, scores, labels):
+    #     x, y = box[:2]
+    #     s = template.format(label, score)
+    #     cv2.putText(
+    #         image, s, (x, y), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), 1
+    #     )
 
     return image
 

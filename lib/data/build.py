@@ -55,26 +55,23 @@ def make_batch_data_sampler(
 
 def build_data_loader(cfg, split="train", num_im=-1, is_distributed=False, start_iter=0):
     num_gpus = get_world_size()
-
     if cfg.DATASET.NAME == "vg" and cfg.DATASET.MODE == "benchmark":
         transforms = build_transforms(cfg, is_train=True if split=="train" else False)
-        dataset = vg_hdf5(cfg, split=split, transforms=transforms, num_im=num_im) 
+        dataset = vg_hdf5(cfg, split=split, transforms=transforms, num_im=num_im)
         sampler = make_data_sampler(dataset, True if split == "train" else False, is_distributed)
-        images_per_batch = cfg.DATASET.TRAIN_BATCH_SIZE if split == "train" else cfg.DATASET.TEST_BATCH_SIZE # 4, 1
-        
+        images_per_batch = cfg.DATASET.TRAIN_BATCH_SIZE if split == "train" else cfg.DATASET.TEST_BATCH_SIZE
         if get_rank() == 0:
-            print("images_per_batch: {}, num_gpus: {}".format(images_per_batch, num_gpus)) # 4, 2
-        
-        images_per_gpu = images_per_batch // num_gpus if split == "train" else images_per_batch # 2 = 4//2
-        start_iter = start_iter if split == "train" else 0 # 0
-        num_iters = cfg.SOLVER.MAX_ITER if split == "train" else None # 100000
-        aspect_grouping = [1] if cfg.DATASET.ASPECT_RATIO_GROUPING else [] # true
+            print("images_per_batch: {}, num_gpus: {}".format(images_per_batch, num_gpus))
+        images_per_gpu = images_per_batch // num_gpus if split == "train" else images_per_batch
+        start_iter = start_iter if split == "train" else 0
+        num_iters = cfg.SOLVER.MAX_ITER if split == "train" else None
+        aspect_grouping = [1] if cfg.DATASET.ASPECT_RATIO_GROUPING else []
         batch_sampler = make_batch_data_sampler(
             dataset, sampler, aspect_grouping, images_per_gpu, num_iters, start_iter
         )
-        collator = BatchCollator(cfg.DATASET.SIZE_DIVISIBILITY) # 32
+        collator = BatchCollator(cfg.DATASET.SIZE_DIVISIBILITY)
         dataloader = data.DataLoader(dataset,
-                num_workers=images_per_batch, # 4
+                num_workers=images_per_batch,
                 batch_sampler=batch_sampler,
                 collate_fn=collator,
             )

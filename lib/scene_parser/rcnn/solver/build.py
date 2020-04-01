@@ -6,26 +6,26 @@ from .lr_scheduler import WarmupMultiStepLR
 
 def make_optimizer(cfg, model):
     params = []
-    lr = cfg.SOLVER.BASE_LR # 0.005
+    lr = cfg.SOLVER.BASE_LR
     for key, value in model.named_parameters():
         if not value.requires_grad:
             continue
-        weight_decay = cfg.SOLVER.WEIGHT_DECAY # 0.0005
+        weight_decay = cfg.SOLVER.WEIGHT_DECAY
         if "bias" in key:
-            lr = cfg.SOLVER.BASE_LR * cfg.SOLVER.BIAS_LR_FACTOR # 0.01 = 0.005 * 2
-            weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS # 0
-        params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}] # value, 0.01, 0
+            lr = cfg.SOLVER.BASE_LR * cfg.SOLVER.BIAS_LR_FACTOR
+            weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS
+        params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
 
-    optimizer = torch.optim.SGD(params, lr, momentum=cfg.SOLVER.MOMENTUM) # params, 0.005, 0.9
+    optimizer = torch.optim.SGD(params, lr, momentum=cfg.SOLVER.MOMENTUM)
     return optimizer
 
 
 def make_lr_scheduler(cfg, optimizer):
     return WarmupMultiStepLR(
-        optimizer, # SGD(lr=0.005, momentum=0.9)
-        cfg.SOLVER.STEPS, # 15000, 25000
-        cfg.SOLVER.GAMMA, # 0.1
-        warmup_factor=cfg.SOLVER.WARMUP_FACTOR, # 0.33333333
-        warmup_iters=cfg.SOLVER.WARMUP_ITERS, # 500
-        warmup_method=cfg.SOLVER.WARMUP_METHOD, # linear
+        optimizer,
+        cfg.SOLVER.STEPS,
+        cfg.SOLVER.GAMMA,
+        warmup_factor=cfg.SOLVER.WARMUP_FACTOR,
+        warmup_iters=cfg.SOLVER.WARMUP_ITERS,
+        warmup_method=cfg.SOLVER.WARMUP_METHOD,
     )
