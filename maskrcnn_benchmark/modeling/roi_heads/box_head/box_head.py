@@ -55,12 +55,6 @@ class ROIBoxHead(torch.nn.Module):
                 if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL:
                     # mode==predcls
                     # return gt proposals and no loss even during training
-                    class_logits = []
-                    for target in targets:
-                        gt_label = target.get_field("labels")
-                        class_logits.append(torch.eye(self.cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES)[gt_label])
-                    class_logits = torch.cat(class_logits, dim=0).to(x.device)
-                    proposals = add_predict_logits(proposals, class_logits)
                     return x, proposals, {}
                 else:
                     # mode==sgcls

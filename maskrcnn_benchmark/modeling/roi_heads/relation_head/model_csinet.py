@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
-from maskrcnn_benchmark.structures.boxlist_ops import boxlist_union
+from maskrcnn_benchmark.modeling.utils import cat
+from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
 from .utils_csinet import AttentionGate, RelationalEmbedding, GCN
@@ -13,8 +14,18 @@ class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
         super(CSINet, self).__init__()
         self.cfg = cfg
-        obj_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
-        rel_classes = cfg.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
+        self.obj_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
+        self.rel_classes = cfg.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
+
+        # mode
+        if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
+            if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL:
+                self.mode = 'predcls'
+            else:
+                self.mode = 'sgcls'
+        else:
+            self.mode = 'sgdet'
+
         self.mask_size = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
         self.dim = 256
         self.avgpool = nn.AdaptiveAvgPool2d(1)
@@ -36,8 +47,8 @@ class CSINet(nn.Module):
 
         self.gcn = GCN(self.dim, attention=False)
 
-        self.obj_predictor = nn.Linear(self.dim, obj_classes)
-        self.rel_predictor = nn.Linear(self.dim, rel_classes)
+        self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
+        self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
 
     def _masking(self, union_features, proposals, rel_pair_idxs, mask_size=14): # proposal_pairs, proposals_union):
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
@@ -115,7 +126,12 @@ class CSINet(nn.Module):
             batch size = 2
         '''
         # 1. init object feats (vis+sem+spa)
-        obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
+        if self.mode == 'predcls':
+            obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
+            obj_logits = to_onehot(obj_labels, self.obj_classes)
+            # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
+        else:
+            obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
         obj_feats = torch.cat((roi_features, obj_logits, bboxes), dim=1) # Nx(4096+151+4)
         obj_feats = self.obj_embedding(obj_feats)
@@ -143,10 +159,13 @@ class CSINet(nn.Module):
         rel_feats = gcn_out[n:] # mxC
         
         # 5. predict obj & rel dist
-        obj_dists = self.obj_predictor(obj_feats) # nx150
+        if self.mode == 'predcls':
+            obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
+            obj_dists = to_onehot(obj_labels, self.obj_classes)
+            # # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
+        else:
+            obj_dists = self.obj_predictor(obj_feats) # nx150
+
         rel_dists = self.rel_predictor(rel_feats) # mx50
-        # obj_preds = obj_dists[:, 1:].max(1)[1] + 1
         
         return obj_dists, rel_dists
-
-        # return obj_dists, obj_preds, edge_ctx
