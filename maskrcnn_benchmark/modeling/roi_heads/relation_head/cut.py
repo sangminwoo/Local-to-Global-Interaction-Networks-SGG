@@ -19,12 +19,12 @@ class CUT(nn.Module):
             self.mode = 'sgdet'
 
         self.subj_embedding = nn.Sequential(
-            nn.Linear(self.obj_classes, embed_dim),
+            nn.Linear(self.obj_classes+6, embed_dim),
             nn.ReLU(True),
             nn.Linear(embed_dim, embed_dim)
         )
         self.obj_embedding = nn.Sequential(
-            nn.Linear(self.obj_classes, embed_dim),
+            nn.Linear(self.obj_classes+6, embed_dim),
             nn.ReLU(True),
             nn.Linear(embed_dim, embed_dim)
         )
@@ -52,12 +52,26 @@ class CUT(nn.Module):
 
         return rel_binarys
 
-    def calc_relevance(self, logits):
-        subj_emb = self.subj_embedding(logits)
-        subj_emb = self.subj_att(subj_emb, subj_emb, subj_emb).squeeze(1)
-        obj_emb = self.obj_embedding(logits)
-        obj_emb = self.obj_att(obj_emb, obj_emb, obj_emb).squeeze(1)
+    def encode_bbox(self, bboxes, im_size):
+        bboxes_enc = bboxes.clone()
+        width, height = im_size
 
+        dim0 = bboxes_enc[:, 0] / width
+        dim1 = bboxes_enc[:, 1] / height
+        dim2 = bboxes_enc[:, 2] / width
+        dim3 = bboxes_enc[:, 3] / height
+        dim4 = (bboxes_enc[:, 2] - bboxes_enc[:, 0]) * (bboxes_enc[:, 3] - bboxes_enc[:, 1]) / height / width
+        dim5 = (bboxes_enc[:, 3] - bboxes_enc[:, 1]) / (bboxes_enc[:, 2] - bboxes_enc[:, 0] + 1)
+
+        return torch.stack((dim0, dim1, dim2, dim3, dim4, dim5), dim=1)
+
+    def calc_relevance(self, logit, bbox):
+        features = torch.cat((logit, bbox), dim=1)
+
+        subj_emb = self.subj_embedding(features)
+        subj_emb = self.subj_att(subj_emb, subj_emb, subj_emb).squeeze(1)
+        obj_emb = self.obj_embedding(features)
+        obj_emb = self.obj_att(obj_emb, obj_emb, obj_emb).squeeze(1)
         relevance = torch.mm(subj_emb, obj_emb.t())
         return relevance
 
@@ -66,20 +80,26 @@ class CUT(nn.Module):
             rel_binarys = self.get_target_binarys(targets)
             tgt_rel_matrices = [target.get_field("relation") for target in targets]
 
+            # semantics
             if self.mode == 'predcls':
                 obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
                 obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
+                obj_logits[obj_logits==0] = -1
             else:
                 obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
 
+            # spatial
+            bboxes = torch.cat([self.encode_bbox(proposal.bbox, proposal.size) for proposal in proposals], 0)
+
             num_objs = [len(proposal) for proposal in proposals]
             obj_logits = obj_logits.split(num_objs, dim=0)
+            bboxes = bboxes.split(num_objs, dim=0)
 
             rel_labels = []
             rel_pair_idxs = []
             cut_losses = 0
-            for obj_logit, rel_binary, tgt_rel_matrix in zip(obj_logits, rel_binarys, tgt_rel_matrices):
-                relevance = self.calc_relevance(obj_logit)
+            for obj_logit, bbox, rel_binary, tgt_rel_matrix in zip(obj_logits, bboxes, rel_binarys, tgt_rel_matrices):
+                relevance = self.calc_relevance(obj_logit, bbox)
                 top_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1][:num_pair_proposals]
                 rel_pair_idx = torch.cat([(top_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
                                           (top_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
@@ -94,15 +114,20 @@ class CUT(nn.Module):
                 if self.mode == 'predcls':
                     obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
                     obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
+                    obj_logits[obj_logits==0] = -1
                 else:
                     obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
 
+                # spatial
+                bboxes = torch.cat([self.encode_bbox(proposal.bbox, proposal.size) for proposal in proposals], 0)
+
                 num_objs = [len(proposal) for proposal in proposals]
                 obj_logits = obj_logits.split(num_objs, dim=0)
+                bboxes = bboxes.split(num_objs, dim=0)
 
                 rel_pair_idxs = []
-                for obj_logit in obj_logits:
-                    relevance = self.calc_relevance(obj_logit)
+                for obj_logit, bbox in zip(obj_logits, bboxes):
+                    relevance = self.calc_relevance(obj_logit, bbox)
                     top_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1][:num_pair_proposals]
                     rel_pair_idx = torch.cat([(top_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
                                               (top_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)

@@ -95,23 +95,25 @@ class CSINet(nn.Module):
         offset = 0
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
         num_bboxes = bboxes.shape[0] # 20
-        obj_to_obj = torch.zeros(num_bboxes, num_bboxes) # 20x20
+        obj_to_obj = torch.zeros(num_bboxes, num_bboxes, device=device) # 20x20
 
         for proposal, pair_idx in zip(proposals, rel_pair_idxs):
             obj_to_obj[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
             offset += len(proposal.bbox)
 
         pair_idxs = torch.cat(rel_pair_idxs, dim=0) # 182x2
-        obj_to_rel = torch.zeros(num_bboxes, pair_idxs.shape[0]).to(device) # 20x182
+        obj_to_rel = torch.zeros(num_bboxes, pair_idxs.shape[0], device=device) # 20x182
         obj_to_rel.scatter_(0, (pair_idxs[:, 0].view(1, -1)), 1)
-        obj_to_rel.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
+        # obj_to_rel.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
+        rel_to_obj = torch.zeros(num_bboxes, pair_idxs.shape[0], device=device) # 20x182
+        rel_to_obj.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
 
-        obj_to_obj = obj_to_obj.to(device)
         top = torch.cat((obj_to_obj, obj_to_rel), dim=1)
-        zero = torch.zeros(pair_idxs.shape[0], pair_idxs.shape[0]).to(device)
-        bot = torch.cat((obj_to_rel.t(), zero), dim=1)
+        zero = torch.zeros(pair_idxs.shape[0], pair_idxs.shape[0], device=device)
+        # bot = torch.cat((obj_to_rel.t(), zero), dim=1)
+        bot = torch.cat((rel_to_obj.t(), zero), dim=1)
         adj = torch.cat((top, bot), dim=0)
-        adj = adj + torch.eye(len(adj)).to(device) # regarding self-connection
+        adj = adj + torch.eye(len(adj), device=device) # regarding self-connection
         return adj
 
     def forward(self, roi_features, proposals, union_features, rel_pair_idxs, logger=None):
