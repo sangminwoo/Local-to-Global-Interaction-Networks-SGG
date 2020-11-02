@@ -346,6 +346,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
 # number of pair proposals in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
+# use coord_conv or not
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV = True
 # type of attention module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'self_att' # cbam, self_att
 # type of graph interact module

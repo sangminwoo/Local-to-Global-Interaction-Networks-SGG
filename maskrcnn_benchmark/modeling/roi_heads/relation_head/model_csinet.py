@@ -16,7 +16,7 @@ class CSINet(nn.Module):
         self.cfg = cfg
         self.obj_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         self.rel_classes = cfg.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
-        resolution = MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
+        resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
 
         # mode
         if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
@@ -38,10 +38,11 @@ class CSINet(nn.Module):
             nn.Linear(self.dim, self.dim),
         )
 
-        self.coord_conv = CoordConv(
-            in_channels=self.dim, out_channels=self.dim, kernel_size=3,
-            stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
-        )
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
+            self.coord_conv = CoordConv(
+                in_channels=self.dim, out_channels=self.dim, kernel_size=3,
+                stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
+            )
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
             self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
@@ -66,6 +67,7 @@ class CSINet(nn.Module):
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
 
     def _masking(self, union_features, proposals, rel_pair_idxs, mask_size=14): # proposal_pairs, proposals_union):
+        device = union_features.device
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
         sbj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 0]]
         obj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 1]]
@@ -89,8 +91,8 @@ class CSINet(nn.Module):
         subj_xy = xy_pooled[:, :2, :].reshape(num_pairs, 4) # Nx4
         obj_xy = xy_pooled[:, 2:, :].reshape(num_pairs, 4) # Nx4
 
-        sbj_mask = torch.zeros(num_pairs, mask_size, mask_size).cuda() # Nx14x14
-        obj_mask = torch.zeros(num_pairs, mask_size, mask_size).cuda() # Nx14x14
+        sbj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
+        obj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
 
         for i in range(num_pairs):
             sbj_mask[i, subj_xy[i,0]:subj_xy[i,2], subj_xy[i,1]:subj_xy[i,3]] = 1
@@ -99,7 +101,7 @@ class CSINet(nn.Module):
         sbj_mask = sbj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
         obj_mask = obj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
 
-        bg_mask = torch.ones(num_pairs, 1, mask_size, mask_size).cuda() # Nx1x14x14
+        bg_mask = torch.ones(num_pairs, 1, mask_size, mask_size, device=device) # Nx1x14x14
         bg_mask = bg_mask - sbj_mask - obj_mask # Nx1x14x14
         bg_mask[bg_mask < 0] = 0 # Nx1x14x14
 
@@ -154,7 +156,8 @@ class CSINet(nn.Module):
         obj_feats = self.obj_embedding(obj_feats)
         
         # 2-1. split: coord_conv
-        union_features = self.coord_conv(union_features)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
+            union_features = self.coord_conv(union_features)
 
         # 2-2. split: mask
         sbj, obj, bg = self._masking(union_features, proposals, rel_pair_idxs, mask_size=self.mask_size)
@@ -168,18 +171,21 @@ class CSINet(nn.Module):
             sbj = self.avgpool(sbj).squeeze()
             obj = self.avgpool(obj).squeeze()
             bg = self.avgpool(bg).squeeze()
-        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att"
-            sbj = sbj.contiguous().view(1, -1) 
-            obj = obj.contiguous().view(1, -1) 
-            bg = bg.contiguous().view(1, -1)
+
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
+            sbj = sbj.contiguous().view(sbj.shape[0], 1, -1) 
+            obj = obj.contiguous().view(obj.shape[0], 1, -1) 
+            bg = bg.contiguous().view(bg.shape[0], 1, -1)
             
             sbj = self.sbj_emb(sbj)
             obj = self.obj_emb(obj)
             bg = self.bg_emb(bg)
             
-            Q = K = V = torch.cat([sbj, obj, bg], dim=0) # 3xD
-            out = self.self_att(Q, K, V).squeeze(1)
-            sbj, obj, bg = out
+            Q = K = V = torch.cat([sbj, obj, bg], dim=1) # 3xD
+            out = self.self_att(Q, K, V)
+            sbj = out[:,0,:].squeeze()
+            obj = out[:,1,:].squeeze()
+            bg = out[:,2,:].squeeze()
 
         # 3. compose
         rel_feats = self.compose(sbj, obj, bg)

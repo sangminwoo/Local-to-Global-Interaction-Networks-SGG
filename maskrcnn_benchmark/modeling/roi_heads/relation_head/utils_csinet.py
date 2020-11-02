@@ -41,7 +41,7 @@ class MultiHeadAttention(nn.Module):
         self.W_q = nn.Linear(d_model, self.d_k * num_heads) # 128-128
         self.W_k = nn.Linear(d_model, self.d_k * num_heads) # 128-128
         self.W_v = nn.Linear(d_model, self.d_v * num_heads) # 128-128
-        self.out = nn.Linear(self.d_v * num_heads, d_model) # 128-128
+        self.mlp = nn.Linear(self.d_v * num_heads, d_model) # 128-128
         self.dropout = nn.Dropout(dropout)
 
         self.attention = ScaledDotProductAttention(self.num_heads, self.d_k, dropout)
@@ -50,7 +50,7 @@ class MultiHeadAttention(nn.Module):
         '''
          q: [batch_size x len_q x d_model]
          k: [batch_size x len_k x d_model]
-         v: [batch_size x len_k x d_model]
+         v: [batch_size x len_v x d_model]
         '''
         N = q.size(0) # 100
         q = self.W_q(q).view(N, -1, self.num_heads, self.d_k).transpose(1,2) # 100x128 -> 100x1x8x8 -> 100x8x1x16
@@ -59,7 +59,7 @@ class MultiHeadAttention(nn.Module):
 
         scores = self.attention(q, k, v, att_mask) # 100x8x1x16
         concat = scores.transpose(1,2).contiguous().view(N, -1, self.d_model) # # 100x1x8x16 -> 100x1x128
-        output = self.out(concat) # 100x1x128
+        output = self.mlp(concat) # 100x1x128
         return output # 100x1x128
 
 ############### Split (Coord-Conv) ################
