@@ -66,15 +66,16 @@ class ROIRelationHead(torch.nn.Module):
                 else:
                     proposals, rel_labels, rel_pair_idxs, rel_binarys = self.samp_processor.detect_relsample(proposals, targets)
         
-            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
+            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
                 rel_labels, rel_pair_idxs, cut_losses = self.cut(proposals, targets, num_pair_proposals=self.num_pair_proposals)
+                
         else:
             rel_labels, rel_binarys = None, None
             rel_pair_idxs = self.samp_processor.prepare_test_pairs(features[0].device, proposals)
 
-            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
+            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
                 rel_pair_idxs = self.cut(proposals, targets, num_pair_proposals=self.num_pair_proposals)
-                
+
         # use box_head to extract features that will be fed to the later predictor processing
         roi_features = self.box_feature_extractor(features, proposals)
 
@@ -103,7 +104,7 @@ class ROIRelationHead(torch.nn.Module):
         else:
             output_losses = dict(loss_rel=loss_relation, loss_refine_obj=loss_refine)
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
+        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
             add_losses["cut_loss"] = cut_losses
 
         output_losses.update(add_losses)

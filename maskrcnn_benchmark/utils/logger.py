@@ -2,6 +2,7 @@
 import logging
 import os
 import sys
+from datetime import datetime
 
 DEBUG_PRINT_ON = True
 
@@ -28,3 +29,9 @@ def setup_logger(name, save_dir, distributed_rank, filename="log.txt"):
         logger.addHandler(fh)
 
     return logger
+
+def get_timestamp():
+    now = datetime.now()
+    timestamp = datetime.timestamp(now)
+    st = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d-%H:%M:%S')
+    return st

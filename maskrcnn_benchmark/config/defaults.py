@@ -38,7 +38,7 @@ _C.MODEL.CLS_AGNOSTIC_BBOX_REG = False
 _C.MODEL.WEIGHT = ""
 
 # checkpoint of detector, for relation prediction
-_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/user/repo/scene-graph-benchmark/checkpoints/pretrained_faster_rcnn/model_final.pth"
+_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/t1_u1/sangmin/repo/scene-graph-benchmark/checkpoints/pretrained_faster_rcnn/model_final.pth"
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -335,10 +335,14 @@ _C.MODEL.ROI_RELATION_HEAD.CAUSAL.SPATIAL_FOR_VISION = False
 _C.MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE = 'none' # 'TDE', 'TIE', 'TE'
 
 _C.MODEL.ROI_RELATION_HEAD.CSINET = CN()
+# use cut of not
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = True
 # dimension of relevance embedding in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
 # number of pair proposals in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
+# kind of graph interact module
+_C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'gat' # gcn, gat
 
 # proportion of predicates
 _C.MODEL.ROI_RELATION_HEAD.REL_PROP = [0.01858, 0.00057, 0.00051, 0.00109, 0.00150, 0.00489, 0.00432, 0.02913, 0.00245, 0.00121, 
@@ -588,9 +592,9 @@ _C.TEST.CUSTUM_PATH = '.'
 # ---------------------------------------------------------------------------- #
 # Misc options
 # ---------------------------------------------------------------------------- #
-_C.OUTPUT_DIR = "/home/user/repo/scene-graph-benchmark/checkpoints/motif-precls-exmp"
+_C.OUTPUT_DIR = "/home/t1_u1/sangmin/repo/scene-graph-benchmark/checkpoints/motif-precls-exmp"
 _C.DETECTED_SGG_DIR = "."
-_C.GLOVE_DIR = "/home/user/data/glove"
+_C.GLOVE_DIR = "/home/t1_u1/sangmin/data/glove"
 
 _C.PATHS_CATALOG = os.path.join(os.path.dirname(__file__), "paths_catalog.py")
 _C.PATHS_DATA = os.path.join(os.path.dirname(__file__), "../data/datasets")

@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .utils_csinet import AttentionGate, RelationalEmbedding, GCN
+from .utils_csinet import AttentionGate, RelationalEmbedding, GCN, GAT
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -45,7 +45,10 @@ class CSINet(nn.Module):
 
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
 
-        self.gcn = GCN(self.dim, attention=False)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
+            self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.4, residual=True)
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
+            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.4, residual=False, alpha=0.2, num_heads=8)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -156,9 +159,10 @@ class CSINet(nn.Module):
 
         n = obj_feats.size(0)
         feats = torch.cat((obj_feats, rel_feats), dim=0) # (n+m)xC
-        gcn_out = self.gcn(feats, adj, residual=True) # (n+m)xC
-        obj_feats = gcn_out[:n] # nxC
-        rel_feats = gcn_out[n:] # mxC
+
+        graph_out = self.graph_interact(feats, adj)
+        obj_feats = graph_out[:n] # nxC
+        rel_feats = graph_out[n:] # mxC
         
         # 5. predict obj & rel dist
         if self.mode == 'predcls':

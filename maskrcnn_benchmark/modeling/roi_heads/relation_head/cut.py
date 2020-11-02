@@ -100,12 +100,16 @@ class CUT(nn.Module):
             cut_losses = 0
             for obj_logit, bbox, rel_binary, tgt_rel_matrix in zip(obj_logits, bboxes, rel_binarys, tgt_rel_matrices):
                 relevance = self.calc_relevance(obj_logit, bbox)
-                top_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1][:num_pair_proposals]
-                rel_pair_idx = torch.cat([(top_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
-                                          (top_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
+                cut_losses += self.cut_loss(relevance, rel_binary)
+                sorted_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1]
+                rel_pair_idx = torch.cat([(sorted_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
+                                          (sorted_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
+                # exclude self-connections
+                rel_pair_idx = torch.stack([pair_idx for pair_idx in rel_pair_idx if pair_idx[0] != pair_idx[1]], dim=0)
+                # leave top pairs
+                rel_pair_idx = rel_pair_idx[:num_pair_proposals]
                 rel_pair_idxs.append(rel_pair_idx)
                 rel_labels.append(tgt_rel_matrix[rel_pair_idx[:,0], rel_pair_idx[:,1]])
-                cut_losses += self.cut_loss(relevance, rel_binary)
 
             return rel_labels, rel_pair_idxs, cut_losses
 
@@ -128,9 +132,13 @@ class CUT(nn.Module):
                 rel_pair_idxs = []
                 for obj_logit, bbox in zip(obj_logits, bboxes):
                     relevance = self.calc_relevance(obj_logit, bbox)
-                    top_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1][:num_pair_proposals]
-                    rel_pair_idx = torch.cat([(top_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
-                                              (top_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
+                    sorted_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1]
+                    rel_pair_idx = torch.cat([(sorted_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
+                                              (sorted_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
+                    # exclude self-connections
+                    rel_pair_idx = torch.stack([pair_idx for pair_idx in rel_pair_idx if pair_idx[0] != pair_idx[1]], dim=0)
+                    # leave top pairs
+                    rel_pair_idx = rel_pair_idx[:num_pair_proposals]
                     rel_pair_idxs.append(rel_pair_idx)
 
                 return rel_pair_idxs
