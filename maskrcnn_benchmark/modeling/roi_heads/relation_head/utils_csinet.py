@@ -62,6 +62,157 @@ class MultiHeadAttention(nn.Module):
         output = self.out(concat) # 100x1x128
         return output # 100x1x128
 
+############### Split (Coord-Conv) ################
+class GetCoordinates:
+
+    def __init__(self, with_r=False):
+        self.with_r = with_r
+
+    def __call__(self, image):
+        batch_size, _, image_height, image_width = image.size()
+
+        y_coords = 2.0 * torch.arange(image_height).float().unsqueeze(
+            1).expand(image_height, image_width) / (image_height - 1.0) - 1.0
+        x_coords = 2.0 * torch.arange(image_width).float().unsqueeze(
+            0).expand(image_height, image_width) / (image_width - 1.0) - 1.0
+
+        coords = torch.stack((y_coords, x_coords), dim=0)
+
+        if self.with_r:
+            rs = ((y_coords ** 2) + (x_coords ** 2)) ** 0.5
+            rs = rs / torch.max(rs)
+            rs = torch.unsqueeze(rs, dim=0)
+            coords = torch.cat((coords, rs), dim=0)
+
+        coords = torch.unsqueeze(coords, dim=0).repeat(batch_size, 1, 1, 1)
+
+        return coords
+
+class AddCoordinates:
+    def __init__(self, with_r=False):
+        self.with_r = with_r
+
+    def __call__(self, image):
+        batch_size, _, image_height, image_width = image.size()
+
+        y_coords = 2.0 * torch.arange(image_height).float().unsqueeze(
+            1).expand(image_height, image_width) / (image_height - 1.0) - 1.0
+        x_coords = 2.0 * torch.arange(image_width).float().unsqueeze(
+            0).expand(image_height, image_width) / (image_width - 1.0) - 1.0
+
+        coords = torch.stack((y_coords, x_coords), dim=0)
+
+        if self.with_r:
+            rs = ((y_coords ** 2) + (x_coords ** 2)) ** 0.5
+            rs = rs / torch.max(rs)
+            rs = torch.unsqueeze(rs, dim=0)
+            coords = torch.cat((coords, rs), dim=0)
+
+        coords = torch.unsqueeze(coords, dim=0).repeat(batch_size, 1, 1, 1)
+
+        image = torch.cat((coords.to(image.device), image), dim=1)
+
+        return image
+
+
+class CoordConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, padding=0, dilation=1, groups=1, bias=True,
+                 with_r=False):
+        super(CoordConv, self).__init__()
+
+        in_channels += 2
+        if with_r:
+            in_channels += 1
+
+        self.conv_layer = nn.Conv2d(in_channels, out_channels,
+                                    kernel_size, stride=stride,
+                                    padding=padding, dilation=dilation,
+                                    groups=groups, bias=bias)
+        self.coord_adder = AddCoordinates(with_r)
+
+    def forward(self, x):
+        x = self.coord_adder(x)
+        x = self.conv_layer(x)
+
+        return x
+
+class CoordConvTranspose(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, padding=0, output_padding=0, groups=1, bias=True,
+                 dilation=1, with_r=False):
+        super(CoordConvTranspose, self).__init__()
+
+        in_channels += 2
+        if with_r:
+            in_channels += 1
+
+        self.conv_tr_layer = nn.ConvTranspose2d(in_channels, out_channels,
+                                                kernel_size, stride=stride,
+                                                padding=padding,
+                                                output_padding=output_padding,
+                                                groups=groups, bias=bias,
+                                                dilation=dilation)
+        self.coord_adder = AddCoordinates(with_r)
+
+    def forward(self, x):
+        x = self.coord_adder(x)
+        x = self.conv_tr_layer(x)
+
+        return x
+
+class CoordConvNet(nn.Module):
+    def __init__(self, cnn_model, with_r=False):
+        super(CoordConvNet, self).__init__()
+
+        self.with_r = with_r
+
+        self.cnn_model = cnn_model
+        self.__get_model()
+        self.__update_weights()
+
+        self.coord_adder = AddCoordinates(self.with_r)
+
+    def __get_model(self):
+        for module in list(self.cnn_model.modules()):
+            if module.__class__ == torch.nn.modules.container.Sequential:
+                self.cnn_model = module
+                break
+
+    def __update_weights(self):
+        coord_channels = 2
+        if self.with_r:
+            coord_channels += 1
+
+        for l in list(self.cnn_model.modules()):
+            if l.__str__().startswith('Conv2d'):
+                weights = l.weight.data
+
+                out_channels, in_channels, k_height, k_width = weights.size()
+
+                coord_weights = torch.zeros(out_channels, coord_channels,
+                                            k_height, k_width)
+
+                weights = torch.cat((coord_weights.to(weights.device),
+                                     weights), dim=1)
+                weights = nn.Parameter(weights)
+
+                l.weight = weights
+                l.in_channels += coord_channels
+
+    def __get_outputs(self, x):
+        outputs = []
+        for layer_name, layer in self.cnn_model._modules.items():
+            if layer.__str__().startswith('Conv2d'):
+                x = self.coord_adder(x)
+            x = layer(x)
+            outputs.append(x)
+
+        return outputs
+
+    def forward(self, x):
+        return self.__get_outputs(x)
+
 ############### Split (Attention) ################
 class ChannelGate(nn.Module):
     def __init__(self, in_channels, reduction_ratio=16):

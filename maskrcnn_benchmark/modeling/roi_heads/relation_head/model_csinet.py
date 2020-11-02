@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .utils_csinet import AttentionGate, RelationalEmbedding, GCN, GAT
+from .utils_csinet import CoordConv, AttentionGate, RelationalEmbedding, GCN, GAT
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -35,6 +35,11 @@ class CSINet(nn.Module):
             nn.Linear(4096+151+4, self.dim),
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim),
+        )
+
+        self.coord_conv = CoordConv(
+            in_channels=self.dim, out_channels=self.dim, kernel_size=3,
+            stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
         )
 
         self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
@@ -141,8 +146,13 @@ class CSINet(nn.Module):
         obj_feats = torch.cat((roi_features, obj_logits, bboxes), dim=1) # Nx(4096+151+4)
         obj_feats = self.obj_embedding(obj_feats)
         
-        # 2. split by mask and attend
+        # 2-1. split: coord_conv
+        union_features = self.coord_conv(union_features)
+
+        # 2-2. split: mask
         sbj, obj, bg = self._masking(union_features, proposals, rel_pair_idxs, mask_size=self.mask_size)
+        
+        # 2-3. split: attend
         sbj = self.sbj_att(sbj)
         obj = self.obj_att(obj)
         bg = self.bg_att(bg)

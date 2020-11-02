@@ -38,7 +38,7 @@ _C.MODEL.CLS_AGNOSTIC_BBOX_REG = False
 _C.MODEL.WEIGHT = ""
 
 # checkpoint of detector, for relation prediction
-_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/t1_u1/sangmin/repo/scene-graph-benchmark/checkpoints/pretrained_faster_rcnn/model_final.pth"
+_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/t1_u1/sangmin/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -592,7 +592,7 @@ _C.TEST.CUSTUM_PATH = '.'
 # ---------------------------------------------------------------------------- #
 # Misc options
 # ---------------------------------------------------------------------------- #
-_C.OUTPUT_DIR = "/home/t1_u1/sangmin/repo/scene-graph-benchmark/checkpoints/motif-precls-exmp"
+_C.OUTPUT_DIR = "/home/t1_u1/sangmin/repo/csi-net/checkpoints/motif-precls-exmp"
 _C.DETECTED_SGG_DIR = "."
 _C.GLOVE_DIR = "/home/t1_u1/sangmin/data/glove"
 
