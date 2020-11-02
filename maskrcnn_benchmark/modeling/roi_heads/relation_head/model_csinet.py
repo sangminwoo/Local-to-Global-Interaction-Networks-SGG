@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .utils_csinet import CoordConv, AttentionGate, RelationalEmbedding, GCN, GAT
+from .utils_csinet import MultiHeadAttention, CoordConv, AttentionGate, RelationalEmbedding, GCN, GAT
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -16,12 +16,13 @@ class CSINet(nn.Module):
         self.cfg = cfg
         self.obj_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         self.rel_classes = cfg.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
+        resolution = MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
 
         # mode
         if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
             if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL:
                 self.mode = 'predcls'
-            else:
+            else: 
                 self.mode = 'sgcls'
         else:
             self.mode = 'sgdet'
@@ -42,9 +43,15 @@ class CSINet(nn.Module):
             stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
         )
 
-        self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
-        self.obj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
-        self.bg_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
+            self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
+            self.obj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
+            self.bg_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
+            self.self_att = MultiHeadAttention(num_heads=8, d_model=self.dim)
+            self.sbj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
+            self.obj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
+            self.bg_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
 
@@ -53,7 +60,7 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
             self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.4, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
-            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.4, residual=False, alpha=0.2, num_heads=8)
+            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.4, residual=False, num_heads=8)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -153,13 +160,26 @@ class CSINet(nn.Module):
         sbj, obj, bg = self._masking(union_features, proposals, rel_pair_idxs, mask_size=self.mask_size)
         
         # 2-3. split: attend
-        sbj = self.sbj_att(sbj)
-        obj = self.obj_att(obj)
-        bg = self.bg_att(bg)
-        
-        sbj = self.avgpool(sbj).squeeze()
-        obj = self.avgpool(obj).squeeze()
-        bg = self.avgpool(bg).squeeze()
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
+            sbj = self.sbj_att(sbj)
+            obj = self.obj_att(obj)
+            bg = self.bg_att(bg)
+
+            sbj = self.avgpool(sbj).squeeze()
+            obj = self.avgpool(obj).squeeze()
+            bg = self.avgpool(bg).squeeze()
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att"
+            sbj = sbj.contiguous().view(1, -1) 
+            obj = obj.contiguous().view(1, -1) 
+            bg = bg.contiguous().view(1, -1)
+            
+            sbj = self.sbj_emb(sbj)
+            obj = self.obj_emb(obj)
+            bg = self.bg_emb(bg)
+            
+            Q = K = V = torch.cat([sbj, obj, bg], dim=0) # 3xD
+            out = self.self_att(Q, K, V).squeeze(1)
+            sbj, obj, bg = out
 
         # 3. compose
         rel_feats = self.compose(sbj, obj, bg)
