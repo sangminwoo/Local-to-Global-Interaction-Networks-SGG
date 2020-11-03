@@ -283,6 +283,7 @@ _C.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR = True
 
 
 _C.MODEL.ROI_RELATION_HEAD = CN()
+_C.MODEL.ROI_RELATION_HEAD.LOAD_CHECKPOINT = False
 # share box feature extractor should be set False for neural-motifs
 _C.MODEL.ROI_RELATION_HEAD.PREDICTOR = "MotifPredictor"
 _C.MODEL.ROI_RELATION_HEAD.FEATURE_EXTRACTOR = "RelationFeatureExtractor"

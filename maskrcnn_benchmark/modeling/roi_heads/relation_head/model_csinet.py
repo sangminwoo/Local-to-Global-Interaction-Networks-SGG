@@ -45,15 +45,17 @@ class CSINet(nn.Module):
                 stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
             )
 
+
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
             self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
             self.obj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
             self.bg_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
             self.self_att = MultiHeadAttention(num_heads=8, d_model=self.dim)
-            self.sbj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
-            self.obj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
-            self.bg_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
+        
+        self.sbj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
+        self.obj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
+        self.bg_emb = nn.Linear(self.dim*resolution*resolution, self.dim)    
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
@@ -135,7 +137,8 @@ class CSINet(nn.Module):
                         e2e_inds.append([i,j])
                         e2e_inds.append([j,i])
             e2e_inds = torch.tensor(e2e_inds)
-            edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
+            if len(e2e_inds) != 0:
+                edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
 
         top = torch.cat((node_to_node, node_to_edge), dim=1)
         bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
@@ -181,9 +184,13 @@ class CSINet(nn.Module):
             obj = self.obj_att(obj)
             bg = self.bg_att(bg)
 
-            sbj = self.avgpool(sbj).squeeze()
-            obj = self.avgpool(obj).squeeze()
-            bg = self.avgpool(bg).squeeze()
+            sbj = sbj.contiguous().view(sbj.shape[0], -1)
+            obj = obj.contiguous().view(obj.shape[0], -1) 
+            bg = bg.contiguous().view(bg.shape[0], -1)
+
+            sbj = self.sbj_emb(sbj)
+            obj = self.obj_emb(obj)
+            bg = self.bg_emb(bg)
 
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
             sbj = sbj.contiguous().view(sbj.shape[0], 1, -1) 

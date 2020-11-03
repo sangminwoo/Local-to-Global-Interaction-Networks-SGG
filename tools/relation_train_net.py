@@ -97,7 +97,7 @@ def train(cfg, local_rank, distributed, logger):
         cfg, model, optimizer, scheduler, output_dir, save_to_disk, custom_scheduler=True
     )
     # if there is certain checkpoint in output_dir, load it, else load pretrained detector
-    if checkpointer.has_checkpoint():
+    if cfg.MODEL.ROI_RELATION_HEAD.LOAD_CHECKPOINT and checkpointer.has_checkpoint():
         extra_checkpoint_data = checkpointer.load(cfg.MODEL.PRETRAINED_DETECTOR_CKPT, 
                                        update_schedule=cfg.SOLVER.UPDATE_SCHEDULE_DURING_LOAD)
         arguments.update(extra_checkpoint_data)
