@@ -28,7 +28,7 @@ class CSINet(nn.Module):
             self.mode = 'sgdet'
 
         self.mask_size = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        self.dim = 256
+        self.dim = 128
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
 
@@ -37,6 +37,7 @@ class CSINet(nn.Module):
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim),
         )
+        self.reduce_union_feature_dim = nn.Conv2d(256, self.dim, kernel_size=1)
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
             self.coord_conv = CoordConv(
@@ -133,7 +134,8 @@ class CSINet(nn.Module):
                     if all(node_to_edge[i] == node_to_edge[j]):
                         e2e_inds.append([i,j])
                         e2e_inds.append([j,i])
-            edge_to_edge[e2e_inds] = 1
+            e2e_inds = torch.tensor(e2e_inds)
+            edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
 
         top = torch.cat((node_to_node, node_to_edge), dim=1)
         bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
@@ -163,6 +165,9 @@ class CSINet(nn.Module):
         obj_feats = torch.cat((roi_features, obj_logits, bboxes), dim=1) # Nx(4096+151+4)
         obj_feats = self.obj_embedding(obj_feats)
         
+        # 2-0. reduce union feature dim (not required. use in case of OOM)
+        union_features = self.reduce_union_feature_dim(union_features)
+
         # 2-1. split: coord_conv
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
             union_features = self.coord_conv(union_features)
