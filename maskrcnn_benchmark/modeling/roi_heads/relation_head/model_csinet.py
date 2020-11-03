@@ -55,9 +55,9 @@ class CSINet(nn.Module):
             self.bg_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
 
+        self.edge2edge = cfg.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
             self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.4, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
@@ -107,7 +107,7 @@ class CSINet(nn.Module):
 
         return union_features*sbj_mask, union_features*obj_mask, union_features*bg_mask # Nx1x14x14, Nx1x14x14, Nx1x14x14
 
-    def _adjacency(self, proposals, rel_pair_idxs, symmetric=True):
+    def _adjacency(self, proposals, rel_pair_idxs, edge2edge=True):
         device = rel_pair_idxs[0].device
         offset = 0
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0)
@@ -116,24 +116,24 @@ class CSINet(nn.Module):
 
         for proposal, pair_idx in zip(proposals, rel_pair_idxs):
             node_to_node[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
-            pair_idx += offset
             offset += len(proposal.bbox)
 
         pair_idxs = torch.cat(rel_pair_idxs, dim=0)
         num_edges = pair_idxs.shape[0]
         node_to_edge = torch.zeros(num_nodes, num_edges, device=device)
-        node_to_edge.scatter_(dim=0, index=(pair_idxs[:, 0].view(1, -1)), src=1)
-        node_to_edge.scatter_(dim=0, index=(pair_idxs[:, 1].view(1, -1)), src=1)
+        node_to_edge.scatter_(0, (pair_idxs[:, 0].view(1, -1)), 1)
+        node_to_edge.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
         
         edge_to_node = node_to_edge.t()
-        e2e_inds = []
-        for i in range(len(node_to_edge)):
-            for j in range(i, len(node_to_edge)):
-                if node_to_edge[i] == node_to_edge[j]:
-                    e2e_inds.append([i,j])
-                    e2e_inds.append([j,i])
         edge_to_edge = torch.zeros(num_edges, num_edges, device=device)
-        edge_to_edge[e2e_inds] = 1
+        if edge2edge:
+            e2e_inds = []
+            for i in range(len(node_to_edge)):
+                for j in range(i+1, len(node_to_edge)):
+                    if all(node_to_edge[i] == node_to_edge[j]):
+                        e2e_inds.append([i,j])
+                        e2e_inds.append([j,i])
+            edge_to_edge[e2e_inds] = 1
 
         top = torch.cat((node_to_node, node_to_edge), dim=1)
         bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
@@ -199,7 +199,7 @@ class CSINet(nn.Module):
         rel_feats = self.compose(sbj, obj, bg)
         
         # 4. context aggregation via gcn
-        adj = self._adjacency(proposals, rel_pair_idxs)
+        adj = self._adjacency(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
 
         n = obj_feats.size(0)
         feats = torch.cat((obj_feats, rel_feats), dim=0) # (n+m)xC

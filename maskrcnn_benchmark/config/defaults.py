@@ -341,7 +341,7 @@ _C.MODEL.ROI_RELATION_HEAD.REL_PROP = [0.01858, 0.00057, 0.00051, 0.00109, 0.001
 
 _C.MODEL.ROI_RELATION_HEAD.CSINET = CN()
 # use cut of not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = True
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = False # True
 # dimension of relevance embedding in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
 # number of pair proposals in cut
@@ -350,6 +350,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV = True
 # type of attention module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'self_att' # cbam, self_att
+# whether consider edge-to-edge connection in adjacency matrix
+_C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 # type of graph interact module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'gat' # gcn, gat
 
