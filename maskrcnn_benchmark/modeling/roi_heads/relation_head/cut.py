@@ -104,8 +104,6 @@ class CUT(nn.Module):
                 sorted_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1]
                 rel_pair_idx = torch.cat([(sorted_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
                                           (sorted_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
-                # exclude self-connections
-                rel_pair_idx = torch.stack([pair_idx for pair_idx in rel_pair_idx if pair_idx[0] != pair_idx[1]], dim=0)
                 # leave top pairs
                 rel_pair_idx = rel_pair_idx[:num_pair_proposals]
                 rel_pair_idxs.append(rel_pair_idx)
@@ -135,8 +133,6 @@ class CUT(nn.Module):
                     sorted_idxs = torch.sort(relevance.contiguous().view(-1), descending=True)[1]
                     rel_pair_idx = torch.cat([(sorted_idxs//obj_logit.shape[0]).contiguous().view(-1,1),
                                               (sorted_idxs%obj_logit.shape[0]).contiguous().view(-1,1)], dim=1)
-                    # exclude self-connections
-                    rel_pair_idx = torch.stack([pair_idx for pair_idx in rel_pair_idx if pair_idx[0] != pair_idx[1]], dim=0)
                     # leave top pairs
                     rel_pair_idx = rel_pair_idx[:num_pair_proposals]
                     rel_pair_idxs.append(rel_pair_idx)

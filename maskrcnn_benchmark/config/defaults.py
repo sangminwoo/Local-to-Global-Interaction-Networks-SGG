@@ -78,6 +78,8 @@ _C.DATASETS.TRAIN = ()
 _C.DATASETS.VAL = ()
 # List of the dataset names for testing, as present in paths_catalog.py
 _C.DATASETS.TEST = ()
+# Bidirectional Relationship Detection
+_C.DATASETS.BI_REL_DET = False
 
 # -----------------------------------------------------------------------------
 # DataLoader
@@ -347,6 +349,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = False # True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
 # number of pair proposals in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
+# reduce union feature dimension
+_C.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_UNION_DIM = True
 # use coord_conv or not
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV = True
 # type of attention module

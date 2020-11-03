@@ -28,7 +28,7 @@ class CSINet(nn.Module):
             self.mode = 'sgdet'
 
         self.mask_size = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        self.dim = 128
+        self.dim = 256 if cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_UNION_DIM else 128
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
 
@@ -37,7 +37,8 @@ class CSINet(nn.Module):
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim),
         )
-        self.reduce_union_feature_dim = nn.Conv2d(256, self.dim, kernel_size=1)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_UNION_DIM:
+            self.reduce_union_feature_dim = nn.Conv2d(256, self.dim, kernel_size=1)
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
             self.coord_conv = CoordConv(
@@ -169,7 +170,7 @@ class CSINet(nn.Module):
         obj_feats = self.obj_embedding(obj_feats)
         
         # 2-0. reduce union feature dim (not required. use in case of OOM)
-        union_features = self.reduce_union_feature_dim(union_features)
+        # union_features = self.reduce_union_feature_dim(union_features)
 
         # 2-1. split: coord_conv
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
