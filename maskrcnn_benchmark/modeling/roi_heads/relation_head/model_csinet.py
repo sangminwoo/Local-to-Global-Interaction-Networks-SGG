@@ -107,28 +107,36 @@ class CSINet(nn.Module):
 
         return union_features*sbj_mask, union_features*obj_mask, union_features*bg_mask # Nx1x14x14, Nx1x14x14, Nx1x14x14
 
-    def _adjacency(self, proposals, rel_pair_idxs):
+    def _adjacency(self, proposals, rel_pair_idxs, symmetric=True):
         device = rel_pair_idxs[0].device
         offset = 0
-        bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
-        num_bboxes = bboxes.shape[0] # 20
-        obj_to_obj = torch.zeros(num_bboxes, num_bboxes, device=device) # 20x20
+        bboxes = torch.cat([proposal.bbox for proposal in proposals], 0)
+        num_nodes = bboxes.shape[0] # 20
+        node_to_node = torch.zeros(num_nodes, num_nodes, device=device)
 
         for proposal, pair_idx in zip(proposals, rel_pair_idxs):
-            obj_to_obj[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
+            node_to_node[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
+            pair_idx += offset
             offset += len(proposal.bbox)
 
-        pair_idxs = torch.cat(rel_pair_idxs, dim=0) # 182x2
-        obj_to_rel = torch.zeros(num_bboxes, pair_idxs.shape[0], device=device) # 20x182
-        obj_to_rel.scatter_(0, (pair_idxs[:, 0].view(1, -1)), 1)
-        # obj_to_rel.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
-        rel_to_obj = torch.zeros(num_bboxes, pair_idxs.shape[0], device=device) # 20x182
-        rel_to_obj.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
+        pair_idxs = torch.cat(rel_pair_idxs, dim=0)
+        num_edges = pair_idxs.shape[0]
+        node_to_edge = torch.zeros(num_nodes, num_edges, device=device)
+        node_to_edge.scatter_(dim=0, index=(pair_idxs[:, 0].view(1, -1)), src=1)
+        node_to_edge.scatter_(dim=0, index=(pair_idxs[:, 1].view(1, -1)), src=1)
+        
+        edge_to_node = node_to_edge.t()
+        e2e_inds = []
+        for i in range(len(node_to_edge)):
+            for j in range(i, len(node_to_edge)):
+                if node_to_edge[i] == node_to_edge[j]:
+                    e2e_inds.append([i,j])
+                    e2e_inds.append([j,i])
+        edge_to_edge = torch.zeros(num_edges, num_edges, device=device)
+        edge_to_edge[e2e_inds] = 1
 
-        top = torch.cat((obj_to_obj, obj_to_rel), dim=1)
-        zero = torch.zeros(pair_idxs.shape[0], pair_idxs.shape[0], device=device)
-        # bot = torch.cat((obj_to_rel.t(), zero), dim=1)
-        bot = torch.cat((rel_to_obj.t(), zero), dim=1)
+        top = torch.cat((node_to_node, node_to_edge), dim=1)
+        bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
         adj = torch.cat((top, bot), dim=0)
         adj = adj + torch.eye(len(adj), device=device) # regarding self-connection
         return adj
