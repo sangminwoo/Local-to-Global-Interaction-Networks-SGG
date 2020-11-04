@@ -28,7 +28,8 @@ class CSINet(nn.Module):
             self.mode = 'sgdet'
 
         self.mask_size = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        self.dim = 256 if cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_UNION_DIM else 128
+        self.dim = 256
+        self.out_dim = 256
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
 
@@ -37,8 +38,6 @@ class CSINet(nn.Module):
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim),
         )
-        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_UNION_DIM:
-            self.reduce_union_feature_dim = nn.Conv2d(256, self.dim, kernel_size=1)
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
             self.coord_conv = CoordConv(
@@ -46,26 +45,36 @@ class CSINet(nn.Module):
                 stride=1, padding=1, dilation=1, groups=1, bias=True, with_r=False
             )
 
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV:
+            self.out_dim = self.dim//4
+            self.mask_conv = nn.Sequential(
+                nn.Conv2d(in_channels=self.dim, out_channels=self.dim//2, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(self.dim//2),
+                nn.ReLU(True),
+                nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(in_channels=self.dim//2, out_channels=self.out_dim, kernel_size=3, stride=1, padding=1)
+            )
+            resolution = 4
+
+        self.sbj_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)
+        self.obj_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)
+        self.bg_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)   
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
-            self.sbj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
-            self.obj_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
-            self.bg_att = AttentionGate(in_channels=self.dim, reduction_ratio=4)
+            self.sbj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
+            self.obj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
+            self.bg_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
             self.self_att = MultiHeadAttention(num_heads=8, d_model=self.dim)
-        
-        self.sbj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
-        self.obj_emb = nn.Linear(self.dim*resolution*resolution, self.dim)
-        self.bg_emb = nn.Linear(self.dim*resolution*resolution, self.dim)    
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
 
         self.edge2edge = cfg.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
-            self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.4, residual=True)
+            self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.1, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
-            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.4, residual=False, num_heads=8)
+            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.1, residual=False, num_heads=8)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -169,16 +178,17 @@ class CSINet(nn.Module):
         obj_feats = torch.cat((roi_features, obj_logits, bboxes), dim=1) # Nx(4096+151+4)
         obj_feats = self.obj_embedding(obj_feats)
         
-        # 2-0. reduce union feature dim (not required. use in case of OOM)
-        # union_features = self.reduce_union_feature_dim(union_features)
-
         # 2-1. split: coord_conv
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV:
             union_features = self.coord_conv(union_features)
 
-        # 2-2. split: mask
+        # 2-2. split: mask-conv
         sbj, obj, bg = self._masking(union_features, proposals, rel_pair_idxs, mask_size=self.mask_size)
-        
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV:
+            sbj = self.mask_conv(sbj)
+            obj = self.mask_conv(obj)
+            bg = self.mask_conv(bg)
+
         # 2-3. split: attend
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
             sbj = self.sbj_att(sbj)

@@ -16,7 +16,7 @@ BOX_SCALE = 1024  # Scale at which we have the boxes
 
 class VGDataset(torch.utils.data.Dataset):
 
-    def __init__(self, split, img_dir, roidb_file, dict_file, image_file, transforms=None,
+    def __init__(self, bi_rel_det, split, img_dir, roidb_file, dict_file, image_file, transforms=None,
                 filter_empty_rels=True, num_im=-1, num_val_im=5000,
                 filter_duplicate_rels=True, filter_non_overlap=True, flip_aug=False, custom_eval=False, custom_path=''):
         """
@@ -66,6 +66,10 @@ class VGDataset(torch.utils.data.Dataset):
             self.filenames = [self.filenames[i] for i in np.where(self.split_mask)[0]]
             self.img_info = [self.img_info[i] for i in np.where(self.split_mask)[0]]
 
+        if bi_rel_det:
+            self.split_mask, self.image_index, self.im_sizes, self.gt_boxes, self.gt_classes, self.relationships = load_brd_graphs(
+                self.roidb_file, self.image_file, self.split
+            )
 
     def __getitem__(self, index):
         #if self.split == 'train':
@@ -420,3 +424,78 @@ def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter
         relationships.append(rels)
 
     return split_mask, boxes, gt_classes, gt_attributes, relationships
+
+def load_graphs_v2(graphs_file, images_file, mode='train'):
+    '''load dataset for bidirectional relationship detection'''
+    if mode not in ('train', 'val', 'test'):
+        raise ValueError('{} invalid'.format(mode))
+
+    roi_h5 = h5py.File(graphs_file, 'r')
+    im_h5 = h5py.File(images_file, 'r')
+
+    with open("bidirectional_rels.pkl", "rb") as f:
+        bi_rels = pickle.load(f)
+
+    bi_rel_idx = np.array(list(bi_rels.keys())) # 11683
+    total_imgs = len(bi_rel_idx) # 11683
+    train_imgs = int(total_imgs*0.7) # 8178
+    # train_idx = bi_rel_idx[:train_imgs] # 70% = 8178
+    # test_idx = bi_rel_idx[train_imgs:] # 30% = 3505
+
+    data_split = np.zeros(total_imgs)
+    data_split[train_imgs:] = 2
+    split = 2 if mode == 'test' else 0
+    split_mask = data_split == split
+
+    '''preprocess'''
+    idx_lookup = dict()
+    for img_idx in bi_rel_idx:
+        idx_set = set()
+        for i, obj_pair in enumerate(bi_rels[img_idx]['idx']):
+            idx_set.update(obj_pair)
+        for i, idx in enumerate(sorted(idx_set)):
+            if img_idx not in idx_lookup.keys():
+                idx_lookup.update({img_idx:{idx:i}})
+            else:
+                idx_lookup[img_idx][idx] = i
+        
+    for i in bi_rel_idx:
+        new_idxs = []
+        for idx_pair in bi_rels[i]['idx']:
+            new_idx = [idx_lookup[i][idx_pair[0]], idx_lookup[i][idx_pair[1]]]
+            new_idxs.append(new_idx)
+        bi_rels[i].update({'idx':new_idxs})
+
+    # Get everything by image.
+    images_index_valid = bi_rel_idx[split_mask]
+    im_sizes = []
+    boxes = []
+    gt_classes = []
+    relationships = []
+
+    for idx in images_index_valid:
+        obj_idx = bi_rels[idx]['idx']
+        size = bi_rels[idx]['size']
+        pred_label = bi_rels[idx]['pred']
+        obj_label = bi_rels[idx]['label']
+        bbox = bi_rels[idx]['bbox']
+
+        im_sizes.append(np.array(size))
+        
+        box_i = []
+        for box in bbox.values():
+            box_i.append(box)
+        boxes.append(np.array(box_i))
+
+        class_i = []
+        for label in obj_label.values():
+            class_i.append(label)
+        class_i = np.array(class_i)
+        gt_classes.append(class_i)
+
+        rels = np.column_stack((np.array(obj_idx), np.array(pred_label)))
+        relationships.append(rels)
+
+    im_sizes = np.stack(im_sizes, 0)
+    # gt_classes = np.array(gt_classes)
+    return split_mask, images_index_valid, im_sizes, boxes, gt_classes, relationships
