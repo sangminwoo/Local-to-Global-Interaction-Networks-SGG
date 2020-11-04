@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-############### Cut (MHA) ################
+############### Cut (MHA) & Split (Self-Attention) ################
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, num_heads, d_k, dropout):
         super(ScaledDotProductAttention, self).__init__()
@@ -112,7 +112,7 @@ class CoordConv(nn.Module):
 
         return x
 
-############### Split (Attention) ################
+############### Split (CBAM) ################
 class ChannelGate(nn.Module):
     def __init__(self, in_channels, reduction_ratio=16):
         super(ChannelGate, self).__init__()
@@ -159,6 +159,59 @@ class AttentionGate(nn.Module):
         att = self.channel_att(x)
         att = self.spatial_att(att)
         return att
+
+############### Split (Axis-wise Attention) ################
+class AWAttention(nn.Module):
+    def __init__(self, channels, height, width, dim):
+        super(AWAttention, self).__init__()
+        self.channels = channels
+        self.f = nn.Sequential(
+                nn.Linear(channels, dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(dim, channels)
+            )
+        self.g = nn.Sequential(
+                nn.Linear(height, dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(dim, height)
+            )
+        self.h = nn.Sequential(
+                nn.Linear(width, dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(dim, width)
+            )
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.maxpool = nn.AdaptiveMaxPool2d(1)
+
+    def _pool_hxw(self, x, pool='avg'):
+        if pool == 'avg':
+            return self.avgpool(x).squeeze()
+        elif pool == 'max':
+            return self.maxpool(x).squeeze()
+
+    def _pool_wxc(self, x, pool='avg'):
+        if pool == 'avg':
+            x = torch.mean(x, 1) # NxCxHxW -> NxHxW
+            x = torch.mean(x, 2) # NxHxW -> NxH
+        elif pool == 'max':
+            x = torch.max(x, 1) # NxCxHxW -> NxHxW
+            x = torch.max(x, 2) # NxHxW -> NxH
+        return x
+
+    def _pool_hxc(self, x, pool='avg'):
+        if pool == 'avg':
+            x = torch.mean(x, 1) # NxCxHxW -> NxHxW
+            x = torch.mean(x, 1) # NxHxW -> NxW
+        elif pool == 'max':
+            x = torch.max(x, 1) # NxCxHxW -> NxHxW
+            x = torch.max(x, 1) # NxHxW -> NxW
+        return x
+
+    def forward(self, x):
+        f_out = torch.sigmoid(self.f(self._pool_hxw(x))).contiguous().view(x.shape[0],-1,1,1) # channel-axis
+        g_out = torch.sigmoid(self.g(self._pool_wxc(x))).contiguous().view(x.shape[0],1,-1,1) # height-axis
+        h_out = torch.sigmoid(self.h(self._pool_hxc(x))).contiguous().view(x.shape[0],1,1,-1) # width-axis
+        return (f_out * g_out * h_out) * x
 
 ############### Entity-Interact ################
 class RelationalEmbedding(nn.Module):

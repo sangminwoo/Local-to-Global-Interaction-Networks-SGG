@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .utils_csinet import MultiHeadAttention, CoordConv, AttentionGate, RelationalEmbedding, GCN, GAT
+from .utils_csinet import MultiHeadAttention, CoordConv, AttentionGate, AWAttention, RelationalEmbedding, GCN, GAT
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -60,7 +60,11 @@ class CSINet(nn.Module):
         self.obj_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)
         self.bg_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)   
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "awa":
+            self.sbj_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
+            self.obj_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
+            self.bg_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
             self.sbj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
             self.obj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
             self.bg_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
@@ -146,7 +150,7 @@ class CSINet(nn.Module):
                     if all(node_to_edge[i] == node_to_edge[j]):
                         e2e_inds.append([i,j])
                         e2e_inds.append([j,i])
-            e2e_inds = torch.tensor(e2e_inds)
+            e2e_inds = torch.tensor(e2e_inds)   
             if len(e2e_inds) != 0:
                 edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
 
@@ -170,7 +174,7 @@ class CSINet(nn.Module):
         # 1. init object feats (vis+sem+spa)
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_logits = to_onehot(obj_labels, self.obj_classes)
+            obj_logits = to_onehot(obj_labels, self.obj_classes, fill=-1)
             # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
@@ -190,29 +194,41 @@ class CSINet(nn.Module):
             bg = self.mask_conv(bg)
 
         # 2-3. split: attend
-        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE in ["cbam", "awa"]:
             sbj = self.sbj_att(sbj)
             obj = self.obj_att(obj)
             bg = self.bg_att(bg)
 
-            sbj = sbj.contiguous().view(sbj.shape[0], -1)
-            obj = obj.contiguous().view(obj.shape[0], -1) 
-            bg = bg.contiguous().view(bg.shape[0], -1)
+            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
+                sbj = sbj.contiguous().view(sbj.shape[0], -1)
+                obj = obj.contiguous().view(obj.shape[0], -1) 
+                bg = bg.contiguous().view(bg.shape[0], -1)
 
-            sbj = self.sbj_emb(sbj)
-            obj = self.obj_emb(obj)
-            bg = self.bg_emb(bg)
+                sbj = self.sbj_emb(sbj)
+                obj = self.obj_emb(obj)
+                bg = self.bg_emb(bg)
+            else:
+                sbj = self.avgpool(sbj).squeeze()
+                obj = self.avgpool(obj).squeeze()
+                bg = self.avgpool(bg).squeeze()
 
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
-            sbj = sbj.contiguous().view(sbj.shape[0], 1, -1) 
-            obj = obj.contiguous().view(obj.shape[0], 1, -1) 
-            bg = bg.contiguous().view(bg.shape[0], 1, -1)
+            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
+                sbj = sbj.contiguous().view(sbj.shape[0], -1)
+                obj = obj.contiguous().view(obj.shape[0], -1) 
+                bg = bg.contiguous().view(bg.shape[0], -1)
+
+                sbj = self.sbj_emb(sbj)
+                obj = self.obj_emb(obj)
+                bg = self.bg_emb(bg)
+            else:
+                sbj = self.avgpool(sbj).squeeze()
+                obj = self.avgpool(obj).squeeze()
+                bg = self.avgpool(bg).squeeze()
             
-            sbj = self.sbj_emb(sbj)
-            obj = self.obj_emb(obj)
-            bg = self.bg_emb(bg)
-            
-            Q = K = V = torch.cat([sbj, obj, bg], dim=1) # 3xD
+            Q = torch.cat([sbj, obj, bg], dim=1) # 3xD
+            K = torch.cat([sbj, obj, bg], dim=1)
+            V = torch.cat([sbj, obj, bg], dim=1)
             out = self.self_att(Q, K, V)
             sbj = out[:,0,:].squeeze()
             obj = out[:,1,:].squeeze()
@@ -234,7 +250,7 @@ class CSINet(nn.Module):
         # 5. predict obj & rel dist
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_dists = to_onehot(obj_labels, self.obj_classes)
+            obj_dists = to_onehot(obj_labels, self.obj_classes, fill=-1)
             # # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_dists = self.obj_predictor(obj_feats) # nx150

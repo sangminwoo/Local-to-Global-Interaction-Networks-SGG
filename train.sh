@@ -2,6 +2,7 @@
 
 read -p "enter gpu: " gpu
 read -p "enter mode (sggen=0; sgcls=1; predcls=2; brd=3): " mode
+num_gpu=${gpu//[^0-9]}
 
 if [ "${mode}" == "sggen" ] || [ "${mode}" == 0 ] ; then
 	use_gt_box=False
@@ -31,23 +32,24 @@ test_img_per_batch=2
 dtype="float16"
 max_iter=50000
 val_period=2000
-checkpoint_period=2000
+checkpoint_period=5000
 
 # cut
 use_cut=False #True
 relevance_dim=256
 num_pair_proposals=64
 # split
-use_mask_conv=True
-use_coord_conv=False
-att_type='self_att' # cbam, self_att
+use_mask_conv=False
+use_coord_conv=True
+att_type='awa' # awa, cbam, self_att
+flatten=False # True
 # interact
 edge2edge=True
-graph_interact_module='gat' # gcn, gat
+graph_interact_module='gcn' # gcn, gat
 
-if [ ${#gpu} > 2 ] ; then
+if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
-	python -m torch.distributed.launch --nproc_per_node=${#gpu} ${run} \
+	python -m torch.distributed.launch --nproc_per_node=${#num_gpu} ${run} \
 	--config-file ${config} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_BOX ${use_gt_box} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL ${use_gt_obj_label} \
@@ -60,6 +62,7 @@ if [ ${#gpu} > 2 ] ; then
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV ${use_mask_conv} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV  ${use_coord_conv} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
+	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
@@ -68,7 +71,7 @@ if [ ${#gpu} > 2 ] ; then
 	SOLVER.MAX_ITER ${max_iter} \
 	SOLVER.VAL_PERIOD ${val_period} \
 	SOLVER.CHECKPOINT_PERIOD ${checkpoint_period}
-else
+else # single-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
 	python ${run} \
 	--config-file ${config} \
@@ -83,6 +86,7 @@ else
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV ${use_mask_conv} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV  ${use_coord_conv} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
+	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \

@@ -355,6 +355,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV = True
 # type of attention module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'self_att' # cbam, self_att
+# whether flatten features
+_C.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN = False # True
 # whether consider edge-to-edge connection in adjacency matrix
 _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 # type of graph interact module
