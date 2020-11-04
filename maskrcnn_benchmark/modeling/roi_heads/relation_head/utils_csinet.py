@@ -236,7 +236,7 @@ class RelationalEmbedding(nn.Module):
 
         return rel_emb # NxO
 
-############### Graph-Interact ################
+############### Graph-Interact (GCN) ################
 class GraphConvolution(nn.Module):
     def __init__(self, in_dim, out_dim):
         super(GraphConvolution, self).__init__()
@@ -289,6 +289,7 @@ class GCN(nn.Module):
 
         return x
 
+############### Graph-Interact (GAT) ################
 class GraphAttentionLayer(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, alpha=0.2, concat=True):
         super(GraphAttentionLayer, self).__init__()
@@ -334,44 +335,95 @@ class GraphAttentionLayer(nn.Module):
         return self.__class__.__name__ + ' (' + str(self.in_dim) + ' -> ' + str(self.out_dim) + ')'
 
 class GAT(nn.Module):
-    def __init__(self, num_layers, dim, dropout=0.6, residual=True, num_heads=8):
+    def __init__(self, dim, num_heads=8, concat=True, dropout=0.6, alpha=0.2):
         super(GAT, self).__init__()
-        self.num_layers = num_layers
         self.dropout = dropout
-        self.residual = residual
+        self.concat = concat
 
-        self.gat_layer = [GraphAttentionLayer(dim, dim//num_heads, dropout=dropout) for _ in range(num_heads)]
+        out_dim = dim//num_heads if self.concat else dim
+        self.gat_layer = [GraphAttentionLayer(dim, out_dim, dropout=dropout, alpha=alpha, concat=concat) for _ in range(num_heads)]
 
         for i, att_head in enumerate(self.gat_layer):
             self.add_module('gat_head_{}'.format(i), att_head)
 
     def forward(self, x, adj):
-        x = torch.cat([att_head(x, adj) for att_head in self.gat_layer], dim=1)
-           
+        if self.concat:
+                out = torch.cat([att_head(x, adj) for att_head in self.gin_layer], dim=1)
+        else:
+            summ = 0
+            for att_head in self.gin_layer:
+                summ += att_head(x, adj)
+            out = summ / self.num_heads
+     
+        return out
+
+############### Graph-Interact (GIN) ################
+class GraphInteractLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, dropout, alpha=0.2, concat=False):
+        super(GraphInteractLayer, self).__init__()
+        self.dropout = dropout
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.concat = concat
+
+        self.f = nn.Linear(in_dim, in_dim, bias=True)
+        self.g = nn.Linear(in_dim, in_dim, bias=True)
+        self.W = nn.Linear(in_dim, out_dim, bias=True)
+
+        self.leakyrelu = nn.LeakyReLU(alpha)
+
+    def forward(self, x, adj):
+        f = self.f(x)
+        g = self.g(x)
+
+        e = self.leakyrelu(torch.mm(f, g.t()))
+        zero_vec = -9e15*torch.ones_like(e)
+        attention = torch.where(adj > 0, e, zero_vec)
+        attention = F.softmax(attention, dim=1)
+        attention = F.dropout(attention, self.dropout, training=self.training)
+
+        x_W = self.W(x)
+        a_x_W = torch.mm(attention, x_W)
+
+        if self.concat:
+            return F.relu(a_x_W)
+        else:
+            return a_x_W
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_dim) + ' -> ' + str(self.out_dim) + ')'
+
+class GIN(nn.Module):
+    def __init__(self, num_layers, dim, num_heads=8, concat=True, residual=True, dropout=0.1, alpha=0.2):
+        super(GIN, self).__init__()
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+        self.concat = concat
+        self.residual = residual
+
+        out_dim = dim//num_heads if self.concat else dim
+        self.gin_layers = [
+                [GraphInteractLayer(dim, out_dim, dropout=dropout, alpha=alpha, concat=concat) \
+            for _ in range(num_heads)]
+        for _ in range(num_layers)]
+
+        for i, gin_layer in enumerate(self.gin_layers):
+            for j, att_head in enumerate(gin_layer):
+                self.add_module('gin_layer_{}_head_{}'.format(i, j), att_head)
+
+    def forward(self, x, adj):
+        residual = x
+        for gin_layer in self.gin_layers:
+
+            if self.concat:
+                x = torch.cat([att_head(x, adj) for att_head in gin_layer], dim=1)
+            else:
+                summ = 0
+                for att_head in gin_layer:
+                    summ += att_head(x, adj)
+                x = summ / self.num_heads
+            
+            if self.residual:
+                x += residual
+                residual = x
         return x
-
-# class GAT(nn.Module):
-#     def __init__(self, num_layers, dim, dropout=0.6, residual=True, alpha=0.2, num_heads=8):
-#         super(GAT, self).__init__()
-#         self.num_layers = num_layers
-#         self.dropout = dropout
-#         self.residual = residual
-
-#         self.gat_layers = [[
-#             GraphAttentionLayer(dim, dim//num_heads, dropout=dropout, alpha=alpha, concat=True) for _ in range(num_heads)]
-#             for _ in range(num_layers)]
-
-#         for i, gat_layer in enumerate(self.gat_layers):
-#             for j, att_head in enumerate(gat_layer):
-#                 self.add_module('gat_layer_{}_head_{}'.format(i, j), att_head)
-
-#     def forward(self, x, adj):
-#         residual = x
-#         for i, gat_layer in enumerate(self.gat_layers):
-#             x = torch.cat([att_head(x, adj) for att_head in gat_layer], dim=1)
-#             if i != self.num_layers-1:
-#                 x = F.dropout(x, self.dropout, training=self.training)
-#             if self.residual:
-#                 x += residual
-#                 residual = x
-#         return x

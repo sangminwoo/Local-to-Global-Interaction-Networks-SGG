@@ -37,7 +37,7 @@ checkpoint_period=5000
 # cut
 use_cut=False #True
 relevance_dim=256
-num_pair_proposals=64
+num_pair_proposals=128
 # split
 use_mask_conv=False
 use_coord_conv=True
@@ -45,7 +45,7 @@ att_type='awa' # awa, cbam, self_att
 flatten=False # True
 # interact
 edge2edge=True
-graph_interact_module='gcn' # gcn, gat
+graph_interact_module='gin' # gcn, gat, gin
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \

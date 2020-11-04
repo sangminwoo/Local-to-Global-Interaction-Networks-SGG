@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .utils_csinet import MultiHeadAttention, CoordConv, AttentionGate, AWAttention, RelationalEmbedding, GCN, GAT
+from .utils_csinet import MultiHeadAttention, CoordConv, AttentionGate, AWAttention, RelationalEmbedding, GCN, GAT, GIN
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -78,7 +78,9 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
             self.graph_interact = GCN(num_layers=4, dim=self.dim, dropout=0.1, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
-            self.graph_interact = GAT(num_layers=4, dim=self.dim, dropout=0.1, residual=False, num_heads=8)
+            self.graph_interact = GAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gin':
+            self.graph_interact = GIN(num_layers=1, dim=self.dim, num_heads=8, concat=False, residual=True, dropout=0.1, alpha=0.2)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -174,7 +176,7 @@ class CSINet(nn.Module):
         # 1. init object feats (vis+sem+spa)
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_logits = to_onehot(obj_labels, self.obj_classes, fill=-1)
+            obj_logits = to_onehot(obj_labels, self.obj_classes)
             # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
@@ -250,7 +252,7 @@ class CSINet(nn.Module):
         # 5. predict obj & rel dist
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_dists = to_onehot(obj_labels, self.obj_classes, fill=-1)
+            obj_dists = to_onehot(obj_labels, self.obj_classes)
             # # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_dists = self.obj_predictor(obj_feats) # nx150
