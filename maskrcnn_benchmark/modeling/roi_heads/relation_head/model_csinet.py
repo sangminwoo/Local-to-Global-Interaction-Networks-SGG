@@ -8,9 +8,9 @@ from maskrcnn_benchmark.modeling.utils import cat
 from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
-from .modules_utils import CoordConv, RelationalEmbedding
+from .modules_utils import masking, CoordConv, RelationalEmbedding
 from .modules_attention import MultiHeadAttention, AttentionGate, AWAttention, NonLocalBlock
-from .modules_graph_interact import GCN, GAT, AGAIN
+from .modules_graph_interact import get_adjacency_mat, GCN, GAT, AGAIN
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -58,24 +58,17 @@ class CSINet(nn.Module):
             )
             resolution = 4
 
-        self.sbj_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)
-        self.obj_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)
-        self.bg_emb = nn.Linear(self.out_dim*resolution*resolution, self.dim)   
+        self.instance_emb = [nn.Linear(self.out_dim*resolution*resolution, self.dim) for _ in range(3)]
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "awa":
-            self.sbj_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
-            self.obj_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
-            self.bg_att = AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim)
+            self.att = [AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim) for _ in range(3)]
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
-            self.sbj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
-            self.obj_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
-            self.bg_att = AttentionGate(in_channels=self.out_dim, reduction_ratio=8)
+            self.att = [AttentionGate(in_channels=self.out_dim, reduction_ratio=8) for _ in range(3)]
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
-            self.self_att = MultiHeadAttention(num_heads=8, d_model=self.dim*3)
+            self.self_att = [MultiHeadAttention(num_heads=8, d_model=self.dim) for _ in range(3)]
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "non_local":
-            self.sbj_att = NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2)
-            self.obj_att = NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2)
-            self.bg_att = NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2)
+            self.att = [NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2) for _ in range(3)]
+
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
@@ -96,82 +89,40 @@ class CSINet(nn.Module):
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
 
-    def _masking(self, union_features, proposals, rel_pair_idxs, mask_size=14): # proposal_pairs, proposals_union):
-        device = union_features.device
-        bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
-        sbj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 0]]
-        obj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 1]]
-        pair_boxes = torch.cat([sbj_boxes, obj_boxes], dim=1)
-        union_boxes = torch.cat((
-            torch.min(sbj_boxes[:,:2], obj_boxes[:,:2]),
-            torch.max(sbj_boxes[:,2:], obj_boxes[:,2:])
-            ),dim=1)
+    def _reduce_dim(self, rel_features):
+        out = []
+        for inst in rel_features:
+            out.append(self.reduce_dim(inst))
+        return out
 
-        x = pair_boxes[:,[0,2,4,6]]-union_boxes[:,0].view(-1, 1).repeat(1, 4) # Nx4
-        y = pair_boxes[:,[1,3,5,7]]-union_boxes[:,1].view(-1, 1).repeat(1, 4) # Nx4
+    def _att(self, rel_features):
+        out = []
+        for inst, att in zip(rel_features, self.att):
+            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
+                N,C,H,W = inst.shape
+                inst = inst.contiguous().view(N, -1, C) # NxHWxC
+                out.append(att(inst, inst, inst).squeeze())
+            else:
+                out.append(att(inst))
+        return out
 
-        num_pairs = pair_boxes.shape[0]
-        x_rescale_factor = (mask_size / torch.max(x[:,1], x[:,3])).view(-1, 1) # Nx1
-        y_rescale_factor = (mask_size / torch.max(y[:,1], y[:,3])).view(-1, 1) # Nx1
+    def _flatten(self, rel_features):
+        out = []
+        for inst in rel_features:
+            out.append(inst.contiguous().view(inst.shape[0], -1))
+        return out
 
-        x_pooled = (x * x_rescale_factor).round().long() # Nx4
-        y_pooled = (y * y_rescale_factor).round().long() # Nx4
-        xy_pooled = torch.stack((x_pooled, y_pooled), dim=2) # Nx4x2
+    def _emb(self, rel_features):
+        out = []
+        for inst, emb in zip(rel_features, self.instance_emb):
+            out.append(emb(inst))
+        return out
 
-        subj_xy = xy_pooled[:, :2, :].reshape(num_pairs, 4) # Nx4
-        obj_xy = xy_pooled[:, 2:, :].reshape(num_pairs, 4) # Nx4
-
-        sbj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
-        obj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
-
-        for i in range(num_pairs):
-            sbj_mask[i, subj_xy[i,0]:subj_xy[i,2], subj_xy[i,1]:subj_xy[i,3]] = 1
-            obj_mask[i, obj_xy[i,0]:obj_xy[i,2], obj_xy[i,1]:obj_xy[i,3]] = 1
-
-        sbj_mask = sbj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
-        obj_mask = obj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
-
-        bg_mask = torch.ones(num_pairs, 1, mask_size, mask_size, device=device) # Nx1x14x14
-        bg_mask = bg_mask - sbj_mask - obj_mask # Nx1x14x14
-        bg_mask[bg_mask < 0] = 0 # Nx1x14x14
-
-        return union_features*sbj_mask, union_features*obj_mask, union_features*bg_mask # Nx1x14x14, Nx1x14x14, Nx1x14x14
-
-    def _adjacency(self, proposals, rel_pair_idxs, edge2edge=True):
-        device = rel_pair_idxs[0].device
-        offset = 0
-        bboxes = torch.cat([proposal.bbox for proposal in proposals], 0)
-        num_nodes = bboxes.shape[0] # 20
-        node_to_node = torch.zeros(num_nodes, num_nodes, device=device)
-
-        for proposal, pair_idx in zip(proposals, rel_pair_idxs):
-            node_to_node[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
-            offset += len(proposal.bbox)
-
-        pair_idxs = torch.cat(rel_pair_idxs, dim=0)
-        num_edges = pair_idxs.shape[0]
-        node_to_edge = torch.zeros(num_nodes, num_edges, device=device)
-        node_to_edge.scatter_(0, (pair_idxs[:, 0].view(1, -1)), 1)
-        node_to_edge.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
-        
-        edge_to_node = node_to_edge.t()
-        edge_to_edge = torch.zeros(num_edges, num_edges, device=device)
-        if edge2edge: # TODO: gpu-friendly
-            e2e_inds = []
-            for i in range(len(node_to_edge)):
-                for j in range(i+1, len(node_to_edge)):
-                    if all(node_to_edge[i] == node_to_edge[j]):
-                        e2e_inds.append([i,j])
-                        e2e_inds.append([j,i])
-            e2e_inds = torch.tensor(e2e_inds)   
-            if len(e2e_inds) != 0:
-                edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
-
-        top = torch.cat((node_to_node, node_to_edge), dim=1)
-        bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
-        adj = torch.cat((top, bot), dim=0)
-        adj = adj + torch.eye(len(adj), device=device) # regarding self-connection
-        return adj
+    def _pool(self, rel_features):
+        out= []
+        for inst in rel_features:
+            out.append(self.avgpool(inst).squeeze())
+        return out
 
     def forward(self, roi_features, proposals, rel_features, rel_pair_idxs, logger=None):
         '''
@@ -188,7 +139,6 @@ class CSINet(nn.Module):
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
             obj_logits = to_onehot(obj_labels, self.obj_classes)
-            # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
         bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
@@ -197,61 +147,28 @@ class CSINet(nn.Module):
 
         # not required. use when OOM occurs.
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM:
-            sbj = self.reduce_dim(sbj)
-            obj = self.reduce_dim(obj)
-            bg = self.reduce_dim(bg)
+            rel_features = self._reduce_dim(rel_features)
 
         # 2. attention
-        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE in ["cbam", "awa", "non_local"]:
-            sbj = self.sbj_att(sbj)
-            obj = self.obj_att(obj)
-            bg = self.bg_att(bg)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT:
+            rel_features = self._att(rel_features)
 
             if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
-                sbj = sbj.contiguous().view(sbj.shape[0], -1)
-                obj = obj.contiguous().view(obj.shape[0], -1) 
-                bg = bg.contiguous().view(bg.shape[0], -1)
-
-                sbj = self.sbj_emb(sbj)
-                obj = self.obj_emb(obj)
-                bg = self.bg_emb(bg)
+                rel_features = self._flatten(rel_features)
+                rel_features = self._emb(rel_features)
             else:
-                sbj = self.avgpool(sbj).squeeze()
-                obj = self.avgpool(obj).squeeze()
-                bg = self.avgpool(bg).squeeze()
-
-        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
-            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
-                sbj = sbj.contiguous().view(sbj.shape[0], -1)
-                obj = obj.contiguous().view(obj.shape[0], -1) 
-                bg = bg.contiguous().view(bg.shape[0], -1)
-
-                sbj = self.sbj_emb(sbj)
-                obj = self.obj_emb(obj)
-                bg = self.bg_emb(bg)
-            else:
-                sbj = self.avgpool(sbj).squeeze()
-                obj = self.avgpool(obj).squeeze()
-                bg = self.avgpool(bg).squeeze()
-            
-            Q = torch.stack([sbj, obj, bg], dim=1) # Nx3xD
-            K = torch.stack([sbj, obj, bg], dim=1)
-            V = torch.stack([sbj, obj, bg], dim=1)
-            out = self.self_att(Q, K, V)
-            sbj = out[:,0,:].squeeze()
-            obj = out[:,1,:].squeeze()
-            bg = out[:,2,:].squeeze()
+                rel_features = self._pool(rel_features)
 
         # 3. compose
         if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING:
-            rel_features = self.compose(sbj, obj, bg)
+            rel_features = self.compose(rel_features)
         else:
             rel_features = rel_features.view(rel_features.size(0), -1)
             rel_features = self.mlp(rel_features)
         
         # 4. context aggregation via graph-interaction networks
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN:
-            adj = self._adjacency(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
+            adj = get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
 
             n = obj_features.size(0)
             feats = torch.cat((obj_features, rel_features), dim=0) # (n+m)xC
@@ -264,7 +181,6 @@ class CSINet(nn.Module):
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
             obj_dists = to_onehot(obj_labels, self.obj_classes)
-            # # obj_logits = torch.eye(self.obj_classes, device=obj_labels.device)[obj_labels]
         else:
             obj_dists = self.obj_predictor(obj_features) # nx150
 

@@ -77,3 +77,44 @@ class RelationalEmbedding(nn.Module):
         rel_emb = rel_sob + rel_sbo + rel_bso # NxO
 
         return rel_emb # NxO
+
+def masking(union_features, proposals, rel_pair_idxs, mask_size=14):
+    device = union_features.device
+    bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
+    sbj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 0]]
+    obj_boxes = bboxes[torch.cat(rel_pair_idxs, dim=0)[:, 1]]
+    pair_boxes = torch.cat([sbj_boxes, obj_boxes], dim=1)
+    union_boxes = torch.cat((
+        torch.min(sbj_boxes[:,:2], obj_boxes[:,:2]),
+        torch.max(sbj_boxes[:,2:], obj_boxes[:,2:])
+        ),dim=1)
+
+    x = pair_boxes[:,[0,2,4,6]]-union_boxes[:,0].view(-1, 1).repeat(1, 4) # Nx4
+    y = pair_boxes[:,[1,3,5,7]]-union_boxes[:,1].view(-1, 1).repeat(1, 4) # Nx4
+
+    num_pairs = pair_boxes.shape[0]
+    x_rescale_factor = (mask_size / torch.max(x[:,1], x[:,3])).view(-1, 1) # Nx1
+    y_rescale_factor = (mask_size / torch.max(y[:,1], y[:,3])).view(-1, 1) # Nx1
+
+    x_pooled = (x * x_rescale_factor).round().long() # Nx4
+    y_pooled = (y * y_rescale_factor).round().long() # Nx4
+    xy_pooled = torch.stack((x_pooled, y_pooled), dim=2) # Nx4x2
+
+    subj_xy = xy_pooled[:, :2, :].reshape(num_pairs, 4) # Nx4
+    obj_xy = xy_pooled[:, 2:, :].reshape(num_pairs, 4) # Nx4
+
+    sbj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
+    obj_mask = torch.zeros(num_pairs, mask_size, mask_size, device=device) # Nx14x14
+
+    for i in range(num_pairs):
+        sbj_mask[i, subj_xy[i,0]:subj_xy[i,2], subj_xy[i,1]:subj_xy[i,3]] = 1
+        obj_mask[i, obj_xy[i,0]:obj_xy[i,2], obj_xy[i,1]:obj_xy[i,3]] = 1
+
+    sbj_mask = sbj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
+    obj_mask = obj_mask.view(num_pairs, 1, mask_size, mask_size) # Nx1x14x14
+
+    bg_mask = torch.ones(num_pairs, 1, mask_size, mask_size, device=device) # Nx1x14x14
+    bg_mask = bg_mask - sbj_mask - obj_mask # Nx1x14x14
+    bg_mask[bg_mask < 0] = 0 # Nx1x14x14
+
+    return union_features*sbj_mask, union_features*obj_mask, union_features*bg_mask # Nx1x14x14, Nx1x14x14, Nx1x14x14
