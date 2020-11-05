@@ -145,10 +145,10 @@ class GAT(nn.Module):
         self.concat = concat
 
         out_dim = dim//num_heads if self.concat else dim
-        self.gat_layer = [GraphAttentionLayer(dim, out_dim, dropout=dropout, alpha=alpha, concat=concat) for _ in range(num_heads)]
+        self.gat_layer = nn.ModuleList([GraphAttentionLayer(dim, out_dim, dropout=dropout, alpha=alpha, concat=concat) for _ in range(num_heads)])
 
-        for i, att_head in enumerate(self.gat_layer):
-            self.add_module('gat_head_{}'.format(i), att_head)
+        # for i, att_head in enumerate(self.gat_layer):
+        #     self.add_module('gat_head_{}'.format(i), att_head)
 
     def forward(self, x, adj):
         if self.concat:
@@ -204,14 +204,14 @@ class AGAIN(nn.Module):
         self.residual = residual
 
         out_dim = dim//num_heads if self.concat else dim
-        self.again_layers = [
-                [AttentionalGraphInteractLayer(dim, out_dim, dropout=dropout, concat=concat) \
-            for _ in range(num_heads)]
-        for _ in range(num_layers)]
+        self.again_layers = nn.ModuleList([
+                nn.ModuleList([AttentionalGraphInteractLayer(dim, out_dim, dropout=dropout, concat=concat) \
+            for _ in range(num_heads)])
+        for _ in range(num_layers)])
 
-        for i, again_layer in enumerate(self.again_layers):
-            for j, att_head in enumerate(again_layer):
-                self.add_module('again_layer_{}_head_{}'.format(i, j), att_head)
+        # for i, again_layer in enumerate(self.again_layers):
+        #     for j, att_head in enumerate(again_layer):
+        #         self.add_module('again_layer_{}_head_{}'.format(i, j), att_head)  
 
     def forward(self, x, adj):
         residual = x

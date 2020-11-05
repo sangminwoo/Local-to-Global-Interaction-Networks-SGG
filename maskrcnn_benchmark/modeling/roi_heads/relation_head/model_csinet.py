@@ -58,25 +58,25 @@ class CSINet(nn.Module):
             )
             resolution = 4
 
-        self.instance_emb = [nn.Linear(self.out_dim*resolution*resolution, self.dim) for _ in range(3)]
+        self.instance_emb = nn.ModuleList([
+                                nn.Sequential(
+                                    nn.Linear(self.out_dim*resolution*resolution, self.dim),
+                                    nn.ReLU(True),
+                                    nn.Linear(self.dim, self.dim)
+                                ) for _ in range(3)
+                            ])
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "awa":
-            self.att = [AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim) for _ in range(3)]
+            self.att = nn.ModuleList([AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim) for _ in range(3)])
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
-            self.att = [AttentionGate(in_channels=self.out_dim, reduction_ratio=8) for _ in range(3)]
+            self.att = nn.ModuleList([AttentionGate(in_channels=self.out_dim, reduction_ratio=8) for _ in range(3)])
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
-            self.self_att = [MultiHeadAttention(num_heads=8, d_model=self.dim) for _ in range(3)]
+            self.att = nn.ModuleList([MultiHeadAttention(num_heads=8, d_model=self.dim) for _ in range(3)])
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "non_local":
-            self.att = [NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2) for _ in range(3)]
-
+            self.att = nn.ModuleList([NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2) for _ in range(3)])
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(self.dim*resolution*resolution, self.dim),
-            nn.ReLU(True),
-            nn.Linear(self.dim, self.dim)
-        )
 
         self.edge2edge = cfg.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
@@ -100,8 +100,8 @@ class CSINet(nn.Module):
         for inst, att in zip(rel_features, self.att):
             if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
                 N,C,H,W = inst.shape
-                inst = inst.contiguous().view(N, -1, C) # NxHWxC
-                out.append(att(inst, inst, inst).squeeze())
+                inst = inst.contiguous().view(N,-1,C) # NxHWxC
+                out.append(att(inst, inst, inst).contiguous().view(N,H,W,C)) # Nx1xHWxC -> NxHxWxC
             else:
                 out.append(att(inst))
         return out
@@ -153,19 +153,16 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT:
             rel_features = self._att(rel_features)
 
-            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
-                rel_features = self._flatten(rel_features)
-                rel_features = self._emb(rel_features)
-            else:
-                rel_features = self._pool(rel_features)
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN:
+            rel_features = self._flatten(rel_features)
+            rel_features = self._emb(rel_features)
+        else:
+            rel_features = self._pool(rel_features)
 
         # 3. compose
         if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING:
-            rel_features = self.compose(rel_features)
-        else:
-            rel_features = rel_features.view(rel_features.size(0), -1)
-            rel_features = self.mlp(rel_features)
-        
+            rel_features = self.compose(*rel_features)
+
         # 4. context aggregation via graph-interaction networks
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN:
             adj = get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=self.edge2edge)

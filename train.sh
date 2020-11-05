@@ -36,7 +36,6 @@ checkpoint_period=5000
 
 # preset
 use_bias=False # True, False
-use_spatial=False # True, False
 pool_sbj_obj=False # True, False
 use_masking=False # True, False
 # cut
@@ -63,7 +62,6 @@ if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
 	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
-	MODEL.ROI_RELATION_HEAD.USE_SPATIAL ${use_spatial} \
 	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 	MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
@@ -92,7 +90,6 @@ else # single-gpu training
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
 	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
-	MODEL.ROI_RELATION_HEAD.USE_SPATIAL ${use_spatial} \
 	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 	MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
