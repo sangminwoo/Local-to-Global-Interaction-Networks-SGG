@@ -44,7 +44,6 @@ class CSIPredictor(nn.Module):
             statistics = get_dataset_statistics(config)
             self.freq_bias = FrequencyBias(config, statistics)
 
-
     def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger=None):
         if self.union_single_not_match:
             union_features = self.up_dim(union_features)

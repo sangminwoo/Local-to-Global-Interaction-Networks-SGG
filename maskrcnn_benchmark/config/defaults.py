@@ -286,6 +286,8 @@ _C.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR = True
 
 _C.MODEL.ROI_RELATION_HEAD = CN()
 _C.MODEL.ROI_RELATION_HEAD.LOAD_CHECKPOINT = False
+_C.MODEL.ROI_RELATION_HEAD.USE_SPATIAL = True
+_C.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ = False
 # share box feature extractor should be set False for neural-motifs
 _C.MODEL.ROI_RELATION_HEAD.PREDICTOR = "MotifPredictor"
 _C.MODEL.ROI_RELATION_HEAD.FEATURE_EXTRACTOR = "RelationFeatureExtractor"
@@ -349,18 +351,22 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = False # True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
 # number of pair proposals in cut
 _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
-# use mask conv of not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV = True
-# use coord_conv or not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV = True
+# use masking or not
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING = True
+# reduce dimension using conv
+_C.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM = True
+# use attention or not
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT = True
 # type of attention module
-_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'self_att' # cbam, self_att
+_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'non-local' # cbam, self_att, non-local
 # whether flatten features
 _C.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN = False # True
+# use graph interaction network or not
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN = True
 # whether consider edge-to-edge connection in adjacency matrix
 _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 # type of graph interact module
-_C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'gat' # gcn, gat
+_C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
 
 
 _C.MODEL.VGG = CN()

@@ -34,18 +34,24 @@ max_iter=50000
 val_period=2000
 checkpoint_period=5000
 
+# preset
+use_bias=False # True, False
+use_spatial=False # True, False
+pool_sbj_obj=False # True, False
+use_masking=False # True, False
 # cut
-use_cut=False #True
+use_cut=False #True, False
 relevance_dim=256
 num_pair_proposals=128
 # split
-use_mask_conv=False
-use_coord_conv=True
-att_type='awa' # awa, cbam, self_att
-flatten=False # True
+reduce_dim=False # True, False
+use_att=False # True, False
+att_type='non_local' # awa, cbam, self_att, non_local
+flatten=False # True, False
 # interact
-edge2edge=True
-graph_interact_module='gin' # gcn, gat, gin
+use_gin=True # True, False
+edge2edge=False # True, False
+graph_interact_module='again' # gcn, gat, again
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
@@ -56,13 +62,18 @@ if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	DATASETS.BI_REL_DET ${brd} \
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
+	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
+	MODEL.ROI_RELATION_HEAD.USE_SPATIAL ${use_spatial} \
+	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 	MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
 	MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS  ${num_pair_proposals} \
-	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV ${use_mask_conv} \
-	MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV  ${use_coord_conv} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING ${use_masking} \
+	MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM ${reduce_dim} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT  ${use_att} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
@@ -80,13 +91,18 @@ else # single-gpu training
 	DATASETS.BI_REL_DET ${brd} \
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
+	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
+	MODEL.ROI_RELATION_HEAD.USE_SPATIAL ${use_spatial} \
+	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 	MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
 	MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS  ${num_pair_proposals} \
-	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASK_CONV ${use_mask_conv} \
-	MODEL.ROI_RELATION_HEAD.CSINET.USE_COORD_CONV  ${use_coord_conv} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING ${use_masking} \
+	MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM ${reduce_dim} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT  ${use_att} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
+	MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \

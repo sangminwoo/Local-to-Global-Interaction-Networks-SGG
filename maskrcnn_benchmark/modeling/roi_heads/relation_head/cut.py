@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from maskrcnn_benchmark.modeling.utils import cat
-from .utils_csinet import MultiHeadAttention
+from .modules_attention import MultiHeadAttention
 
 class CUT(nn.Module):
     def __init__(self, cfg, embed_dim):
