@@ -12,8 +12,12 @@ import os
 import time
 import datetime
 
+import random
+import numpy as np
+
 import torch
 from torch.nn.utils import clip_grad_norm_
+import torch.backends.cudnn as cudnn
 
 from maskrcnn_benchmark.config import cfg
 from maskrcnn_benchmark.data import make_data_loader
@@ -41,6 +45,15 @@ except ImportError:
 
 
 def train(cfg, local_rank, distributed, logger):
+    # for reproducibility
+    random.seed(cfg.MODEL.RANDOM_SEED)
+    np.random.seed(cfg.MODEL.RANDOM_SEED)
+    torch.manual_seed(cfg.MODEL.RANDOM_SEED)
+    torch.cuda.manual_seed(cfg.MODEL.RANDOM_SEED)
+    torch.cuda.manual_seed_all(cfg.MODEL.RANDOM_SEED) # # if use multi-GPU
+    cudnn.deterministic = True
+    cudnn.benchmark = False
+
     debug_print(logger, 'prepare training')
     model = build_detection_model(cfg) 
     debug_print(logger, 'end model construction')

@@ -33,6 +33,7 @@ dtype="float16"
 max_iter=50000
 val_period=2000
 checkpoint_period=50000
+random_seed=0
 
 # preset
 use_bias=False # True, False
@@ -46,18 +47,19 @@ num_pair_proposals=256
 reduce_dim=False # True, False
 use_att=True # True, False
 att_all=True # True, False
-att_type='awa' # awa, cbam, self_att, non_local
+att_type='non_local' # awa, cbam, self_att, non_local
 flatten=True # True, False
 # interact
 use_gin=True # True, False
-gin_layers=1 # 2, 4
-edge2edge=True # True, False
-graph_interact_module='again' # gcn, gat, again
+gin_layers=1 # 1, 2, 4
+edge2edge=False # True, False
+graph_interact_module='gat' # gcn, gat, again
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
 	python -m torch.distributed.launch --nproc_per_node=${#num_gpu} ${run} \
 	--config-file ${config} \
+	MODEL.RANDOM_SEED ${random_seed} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_BOX ${use_gt_box} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL ${use_gt_obj_label} \
 	DATASETS.BI_REL_DET ${brd} \
@@ -88,6 +90,7 @@ else # single-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
 	python ${run} \
 	--config-file ${config} \
+	MODEL.RANDOM_SEED ${random_seed} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_BOX ${use_gt_box} \
 	MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL ${use_gt_obj_label} \
 	DATASETS.BI_REL_DET ${brd} \
