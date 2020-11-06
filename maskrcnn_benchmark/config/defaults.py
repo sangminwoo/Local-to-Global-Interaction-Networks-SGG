@@ -356,12 +356,16 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM = True
 # use attention or not
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT = True
+# attend over sbj, obj, bg simultaneously
+_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE = True
 # type of attention module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'non-local' # cbam, self_att, non-local
 # whether flatten features
 _C.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN = False # True
 # use graph interaction network or not
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN = True
+# number of gin layers
+_C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS = 1
 # whether consider edge-to-edge connection in adjacency matrix
 _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 # type of graph interact module

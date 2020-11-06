@@ -22,8 +22,8 @@ def get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=True):
 
         if edge2edge:
             # consider edge-to-edge propagation only when they are in the opposite direction
-            e2e_idxs_per_image = torch.tensor([[[i,j], [j,i]] for i in range(len(pair_idxs_per_image)) \
-                for j in range(i+1, len(pair_idxs_per_image)) if A[i,0] == A[j,1] and A[i,1] == A[j,0]], device=device)
+            e2e_idxs_per_image = torch.tensor([[[i,j], [j,i]] for i in range(len(pair_idxs_per_image)) for j in range(i+1, len(pair_idxs_per_image)) \
+                if pair_idxs_per_image[i,0] == pair_idxs_per_image[j,1] and pair_idxs_per_image[i,1] == pair_idxs_per_image[j,0]], device=device)
             e2e_idxs_per_image = e2e_idxs_per_image.contiguous().view(-1, 2)
             if len(e2e_idxs_per_image) > 0:
                 edge_to_edge[e2e_offset+e2e_idxs_per_image[:, 0].view(-1, 1),
@@ -35,9 +35,9 @@ def get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=True):
     node_to_edge.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
     edge_to_node = node_to_edge.t()
 
-    top = torch.cat((node_to_node, node_to_edge), dim=1)
-    bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
-    adj = torch.cat((top, bot), dim=0)
+    n2n_n2e = torch.cat((node_to_node, node_to_edge), dim=1)
+    e2n_e2e = torch.cat((edge_to_node, edge_to_edge), dim=1)
+    adj = torch.cat((n2n_n2e, e2n_e2e), dim=0)
     adj = adj + torch.eye(len(adj), device=device) # regarding self-connection
     return adj
 

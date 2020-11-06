@@ -27,7 +27,7 @@ run="tools/relation_train_net.py"
 config="configs/e2e_relation_X_101_32_8_FPN_1x.yaml"
 predictor="CSIPredictor"
 resolution=7
-train_img_per_batch=4
+train_img_per_batch=1
 test_img_per_batch=2
 dtype="float16"
 max_iter=50000
@@ -36,7 +36,7 @@ checkpoint_period=50000
 
 # preset
 use_bias=False # True, False
-pool_sbj_obj=False # True, False
+pool_sbj_obj=True # True, False
 use_masking=False # True, False
 # cut
 use_cut=False #True, False
@@ -44,12 +44,14 @@ relevance_dim=256
 num_pair_proposals=256
 # split
 reduce_dim=False # True, False
-use_att=False # True, False
-att_type='non_local' # awa, cbam, self_att, non_local
-flatten=False # True, False
+use_att=True # True, False
+att_all=True # True, False
+att_type='awa' # awa, cbam, self_att, non_local
+flatten=True # True, False
 # interact
 use_gin=True # True, False
-edge2edge=False # True, False
+gin_layers=1 # 2, 4
+edge2edge=True # True, False
 graph_interact_module='again' # gcn, gat, again
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
@@ -69,9 +71,11 @@ if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING ${use_masking} \
 	MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM ${reduce_dim} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT  ${use_att} \
+	MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE ${att_all} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
+	MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
@@ -97,9 +101,11 @@ else # single-gpu training
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING ${use_masking} \
 	MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM ${reduce_dim} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT  ${use_att} \
+	MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE ${att_all} \
 	MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 	MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
+	MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 	MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 	MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 	SOLVER.IMS_PER_BATCH ${train_img_per_batch} \

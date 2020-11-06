@@ -9,7 +9,7 @@ from .utils_motifs import to_onehot
 from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
 from .modules_utils import masking, CoordConv, RelationalEmbedding
-from .modules_attention import MultiHeadAttention, AttentionGate, AWAttention, NonLocalBlock
+from .modules_attention import MultiHeadAttention, CBAM, NonLocalBlock, AWAttention
 from .modules_graph_interact import get_adjacency_mat, GCN, GAT, AGAIN
 
 class CSINet(nn.Module):
@@ -66,25 +66,29 @@ class CSINet(nn.Module):
                                 ) for _ in range(3)
                             ])
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "awa":
-            self.att = nn.ModuleList([AWAttention(channels=self.out_dim, height=resolution, width=resolution, dim=self.out_dim) for _ in range(3)])
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
+            self.att = MultiHeadAttention(num_heads=8, d_model=self.dim*3) if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE \
+                else nn.ModuleList([MultiHeadAttention(num_heads=8, d_model=self.dim) for _ in range(3)])
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "cbam":
-            self.att = nn.ModuleList([AttentionGate(in_channels=self.out_dim, reduction_ratio=8) for _ in range(3)])
-        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
-            self.att = nn.ModuleList([MultiHeadAttention(num_heads=8, d_model=self.dim) for _ in range(3)])
+            self.att = CBAM(in_channels=self.out_dim*3, reduction_ratio=8, kernel_size=3) if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE \
+                else nn.ModuleList([CBAM(in_channels=self.out_dim, reduction_ratio=8, kernel_size=3) for _ in range(3)])
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "non_local":
-            self.att = nn.ModuleList([NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2) for _ in range(3)])
-
+            self.att = NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, subsample=True, use_bn=True, dim=3) if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE \
+                else nn.ModuleList([NonLocalBlock(in_channels=self.out_dim, reduction_ratio=2, use_bn=True, dim=2) for _ in range(3)])
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "awa":
+            self.att = AWAttention(channels=self.out_dim*3, height=resolution*3, width=resolution*3, hidden_dim=self.dim*3, pool='avg', residual=True) if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE \
+                else nn.ModuleList([AWAttention(channels=self.out_dim, height=resolution, width=resolution, hidden_dim=self.out_dim, pool='avg', residual=True) for _ in range(3)])
+        
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
 
         self.edge2edge = cfg.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
-            self.graph_interact = GCN(num_layers=1, dim=self.dim, dropout=0.1, residual=True)
+            self.graph_interact = GCN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, dropout=0.1, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
             self.graph_interact = GAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'again':
-            self.graph_interact = AGAIN(num_layers=1, dim=self.dim, num_heads=8, concat=True, residual=False, dropout=0.1)
+            self.graph_interact = AGAIN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, num_heads=8, concat=True, residual=False, dropout=0.1)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -96,6 +100,9 @@ class CSINet(nn.Module):
         return out
 
     def _att(self, rel_features):
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE:
+            return self.att.forward_xyz(*rel_features)
+
         out = []
         for inst, att in zip(rel_features, self.att):
             if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE == "self_att":
@@ -149,7 +156,7 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM:
             rel_features = self._reduce_dim(rel_features)
 
-        # 2. attention
+        # 2. (local) attention within sbj, obj, bg 
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT:
             rel_features = self._att(rel_features)
 
@@ -166,7 +173,7 @@ class CSINet(nn.Module):
             assert len(rel_features) == 1, "using union feature only"
             rel_features = rel_features[0]
 
-        # 4. context aggregation via graph-interaction networks
+        # 4. (global) context aggregation via graph-interaction networks
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN:
             adj = get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
 
