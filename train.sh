@@ -32,7 +32,7 @@ test_img_per_batch=2
 dtype="float16"
 max_iter=50000
 val_period=2000
-checkpoint_period=5000
+checkpoint_period=50000
 
 # preset
 use_bias=False # True, False
@@ -41,7 +41,7 @@ use_masking=False # True, False
 # cut
 use_cut=False #True, False
 relevance_dim=256
-num_pair_proposals=128
+num_pair_proposals=256
 # split
 reduce_dim=False # True, False
 use_att=False # True, False

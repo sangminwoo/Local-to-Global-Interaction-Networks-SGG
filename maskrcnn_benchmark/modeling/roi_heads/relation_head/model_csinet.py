@@ -162,6 +162,9 @@ class CSINet(nn.Module):
         # 3. compose
         if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING:
             rel_features = self.compose(*rel_features)
+        else:
+            assert len(rel_features) == 1, "using union feature only"
+            rel_features = rel_features[0]
 
         # 4. context aggregation via graph-interaction networks
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN:

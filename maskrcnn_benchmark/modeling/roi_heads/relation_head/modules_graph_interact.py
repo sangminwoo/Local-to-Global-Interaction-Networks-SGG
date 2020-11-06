@@ -6,33 +6,34 @@ import torch.nn.functional as F
 
 def get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=True):
     device = rel_pair_idxs[0].device
-    offset = 0
+    n2n_offset = 0
+    e2e_offset = 0
     bboxes = torch.cat([proposal.bbox for proposal in proposals], 0)
     num_nodes = bboxes.shape[0] # 20
-    node_to_node = torch.zeros(num_nodes, num_nodes, device=device)
-
-    for proposal, pair_idx in zip(proposals, rel_pair_idxs):
-        node_to_node[offset+pair_idx[:, 0].view(-1, 1), offset+pair_idx[:, 1].view(-1, 1)] = 1 # 1024x1024
-        offset += len(proposal.bbox)
-
     pair_idxs = torch.cat(rel_pair_idxs, dim=0)
     num_edges = pair_idxs.shape[0]
+    node_to_node = torch.zeros(num_nodes, num_nodes, device=device)
+    edge_to_edge = torch.zeros(num_edges, num_edges, device=device)
+
+    for proposal, pair_idxs_per_image in zip(proposals, rel_pair_idxs):
+        node_to_node[n2n_offset+pair_idxs_per_image[:, 0].view(-1, 1),
+                     n2n_offset+pair_idxs_per_image[:, 1].view(-1, 1)] = 1 # 1024x1024
+        n2n_offset += len(proposal.bbox)
+
+        if edge2edge:
+            # consider edge-to-edge propagation only when they are in the opposite direction
+            e2e_idxs_per_image = torch.tensor([[[i,j], [j,i]] for i in range(len(pair_idxs_per_image)) \
+                for j in range(i+1, len(pair_idxs_per_image)) if A[i,0] == A[j,1] and A[i,1] == A[j,0]], device=device)
+            e2e_idxs_per_image = e2e_idxs_per_image.contiguous().view(-1, 2)
+            if len(e2e_idxs_per_image) > 0:
+                edge_to_edge[e2e_offset+e2e_idxs_per_image[:, 0].view(-1, 1),
+                             e2e_offset+e2e_idxs_per_image[:, 1].view(-1, 1)] = 1
+            e2e_offset += len(pair_idxs_per_image)
+
     node_to_edge = torch.zeros(num_nodes, num_edges, device=device)
     node_to_edge.scatter_(0, (pair_idxs[:, 0].view(1, -1)), 1)
     node_to_edge.scatter_(0, (pair_idxs[:, 1].view(1, -1)), 1)
-    
     edge_to_node = node_to_edge.t()
-    edge_to_edge = torch.zeros(num_edges, num_edges, device=device)
-    if edge2edge: # TODO: gpu-friendly
-        e2e_inds = []
-        for i in range(len(node_to_edge)):
-            for j in range(i+1, len(node_to_edge)):
-                if all(node_to_edge[i] == node_to_edge[j]):
-                    e2e_inds.append([i,j])
-                    e2e_inds.append([j,i])
-        e2e_inds = torch.tensor(e2e_inds)   
-        if len(e2e_inds) != 0:
-            edge_to_edge[e2e_inds[:,0], e2e_inds[:,1]] = 1
 
     top = torch.cat((node_to_node, node_to_edge), dim=1)
     bot = torch.cat((edge_to_node, edge_to_edge), dim=1)
