@@ -10,7 +10,7 @@ from .roi_relation_feature_extractors import make_roi_relation_feature_extractor
 # from .roi_relation_predictors import make_roi_relation_predictor
 from .modules_utils import masking, CoordConv, RelationalEmbedding
 from .modules_attention import MultiHeadAttention, CBAM, NonLocalBlock, AWAttention
-from .modules_graph_interact import get_adjacency_mat, GCN, GAT, AGAIN
+from .modules_graph_interact import get_adjacency_mat, GCN, GAT, SpGAT, AGAIN
 
 class CSINet(nn.Module):
     def __init__(self, cfg, in_channels):
@@ -86,7 +86,7 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
             self.graph_interact = GCN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, dropout=0.1, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
-            self.graph_interact = GAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
+            self.graph_interact = SpGAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'again':
             self.graph_interact = AGAIN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, num_heads=8, concat=True, residual=False, dropout=0.1)
 

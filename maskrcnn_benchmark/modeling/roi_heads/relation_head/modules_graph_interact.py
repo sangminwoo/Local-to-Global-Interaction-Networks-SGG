@@ -77,10 +77,10 @@ class GCN(nn.Module):
         self.dropout = dropout
         self.residual = residual
 
-        self.gcn_layers = [GraphConvolution(dim, dim) for _ in range(num_layers)]
+        self.gcn_layers = nn.ModuleList([GraphConvolution(dim, dim) for _ in range(num_layers)])
 
-        for i, gcn_layer in enumerate(self.gcn_layers):
-            self.add_module('gcn_layer_{}'.format(i), gcn_layer)
+        # for i, gcn_layer in enumerate(self.gcn_layers):
+        #     self.add_module('gcn_layer_{}'.format(i), gcn_layer)
 
     def forward(self, x, adj):
         residual = x
@@ -98,16 +98,16 @@ class GCN(nn.Module):
 class GraphAttentionLayer(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, alpha=0.2, concat=True):
         super(GraphAttentionLayer, self).__init__()
-        self.dropout = dropout
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.concat = concat
 
-        self.W = nn.Parameter(torch.empty(size=(in_dim, out_dim)))
+        self.W = nn.Parameter(torch.zeros(size=(in_dim, out_dim)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
-        self.a = nn.Parameter(torch.empty(size=(2*out_dim, 1)))
+        self.a = nn.Parameter(torch.zeros(size=(2*out_dim, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
+        self.dropout = dropout
         self.leakyrelu = nn.LeakyReLU(alpha)
 
     def forward(self, h, adj):
@@ -152,6 +152,7 @@ class GAT(nn.Module):
         #     self.add_module('gat_head_{}'.format(i), att_head)
 
     def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
         if self.concat:
                 out = torch.cat([att_head(x, adj) for att_head in self.gat_layer], dim=1)
         else:
@@ -160,6 +161,105 @@ class GAT(nn.Module):
                 summ += att_head(x, adj)
             out = summ / self.num_heads
      
+        return out
+
+############### Graph-Interact (Sparse-GAT) ################
+class SpecialSpmmFunction(torch.autograd.Function):
+    """Special function for only sparse region backpropataion layer."""
+    @staticmethod
+    def forward(ctx, indices, values, shape, b):
+        assert indices.requires_grad == False
+        a = torch.sparse_coo_tensor(indices, values, shape)
+        ctx.save_for_backward(a, b)
+        ctx.N = shape[0]
+        return torch.matmul(a, b)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        grad_values = grad_b = None
+        if ctx.needs_input_grad[1]:
+            grad_a_dense = grad_output.matmul(b.t())
+            edge_idx = a._indices()[0, :] * ctx.N + a._indices()[1, :]
+            grad_values = grad_a_dense.view(-1)[edge_idx]
+        if ctx.needs_input_grad[3]:
+            grad_b = a.t().matmul(grad_output)
+        return None, grad_values, None, grad_b
+
+class SpecialSpmm(nn.Module):
+    def forward(self, indices, values, shape, b):
+        return SpecialSpmmFunction.apply(indices, values, shape, b)
+
+class SpGraphAttentionLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, dropout, alpha=0.2, concat=True):
+        super(SpGraphAttentionLayer, self).__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.alpha = alpha
+        self.concat = concat
+
+        self.W = nn.Parameter(torch.zeros(size=(in_dim, out_dim)))
+        nn.init.xavier_normal_(self.W.data, gain=1.414)
+                
+        self.a = nn.Parameter(torch.zeros(size=(1, 2*out_dim)))
+        nn.init.xavier_normal_(self.a.data, gain=1.414)
+
+        self.dropout = nn.Dropout(dropout)
+        self.leakyrelu = nn.LeakyReLU(self.alpha)
+        self.special_spmm = SpecialSpmm()
+
+    def forward(self, h, adj):
+        device = 'cuda' if input.is_cuda else 'cpu'
+        N = h.shape[0]
+        adj = adj.nonzero().t() # adj: 2 x E (where E is the numer of edges)
+
+        Wh = torch.mm(h, self.W) # Wh: N x out (where N is the number of nodes)
+        assert not torch.isnan(Wh).any()
+
+        # Self-attention on the nodes - Shared attention mechanism
+        edge_h = torch.cat((Wh[adj[0, :], :], Wh[adj[1, :], :]), dim=1).t() # edge_h: 2*out x E
+
+        edge_e = torch.exp(-self.leakyrelu(self.a.mm(edge_h).squeeze())) # edge_e: E
+        assert not torch.isnan(edge_e).any()
+
+        e_rowsum = self.special_spmm(adj, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=device)) # e_rowsum: N x 1
+
+        edge_e = self.dropout(edge_e) # edge_e: E
+
+        h_prime = self.special_spmm(adj, edge_e, torch.Size([N, N]), Wh) # h_prime: N x out
+        assert not torch.isnan(h_prime).any()
+        
+        h_prime = h_prime.div(e_rowsum) # h_prime: N x out
+        assert not torch.isnan(h_prime).any()
+
+        if self.concat:
+            # if this layer is not last layer,
+            return F.elu(h_prime)
+        else:
+            # if this layer is last layer,
+            return h_prime
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_dim) + ' -> ' + str(self.out_dim) + ')'
+
+class SpGAT(nn.Module):
+    def __init__(self, dim, num_heads=8, concat=True, dropout=0.6, alpha=0.2):
+        """Sparse version of GAT."""
+        super(SpGAT, self).__init__()
+        self.dropout = dropout
+
+        out_dim = dim//num_heads if self.concat else dim
+        self.attentions = [SpGraphAttentionLayer(dim, 
+                                                 out_dim, 
+                                                 dropout=dropout, 
+                                                 alpha=alpha, 
+                                                 concat=True) for _ in range(num_heads)]
+        for i, attention in enumerate(self.attentions):
+            self.add_module('attention_{}'.format(i), attention)
+
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
         return out
 
 ############### Graph-Interact (AGAIN) ################
@@ -216,6 +316,7 @@ class AGAIN(nn.Module):
 
     def forward(self, x, adj):
         residual = x
+        x = F.dropout(x, self.dropout, training=self.training)
         for again_layer in self.again_layers:
 
             if self.concat:
