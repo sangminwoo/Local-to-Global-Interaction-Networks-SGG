@@ -18,6 +18,8 @@ def get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=True):
     for proposal, pair_idxs_per_image in zip(proposals, rel_pair_idxs):
         node_to_node[n2n_offset+pair_idxs_per_image[:, 0].view(-1, 1),
                      n2n_offset+pair_idxs_per_image[:, 1].view(-1, 1)] = 1 # 1024x1024
+        node_to_node[n2n_offset+pair_idxs_per_image[:, 1].view(-1, 1),
+                     n2n_offset+pair_idxs_per_image[:, 0].view(-1, 1)] = 1
         n2n_offset += len(proposal.bbox)
 
         if edge2edge:
@@ -209,7 +211,7 @@ class SpGraphAttentionLayer(nn.Module):
         self.special_spmm = SpecialSpmm()
 
     def forward(self, h, adj):
-        device = 'cuda' if input.is_cuda else 'cpu'
+        device = 'cuda' if h.is_cuda else 'cpu'
         N = h.shape[0]
         adj = adj.nonzero().t() # adj: 2 x E (where E is the numer of edges)
 
@@ -247,6 +249,7 @@ class SpGAT(nn.Module):
         """Sparse version of GAT."""
         super(SpGAT, self).__init__()
         self.dropout = dropout
+        self.concat = concat
 
         out_dim = dim//num_heads if self.concat else dim
         self.attentions = [SpGraphAttentionLayer(dim, 
@@ -303,6 +306,7 @@ class AGAIN(nn.Module):
         self.num_heads = num_heads
         self.concat = concat
         self.residual = residual
+        self.dropout = dropout
 
         out_dim = dim//num_heads if self.concat else dim
         self.again_layers = nn.ModuleList([

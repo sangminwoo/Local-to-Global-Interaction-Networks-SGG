@@ -55,6 +55,10 @@ class VGDataset(torch.utils.data.Dataset):
         self.custom_eval = custom_eval
         if self.custom_eval:
             self.get_custom_imgs(custom_path)
+        elif bi_rel_det:
+            self.split_mask, self.image_index, self.im_sizes, self.gt_boxes, self.gt_classes, self.relationships = load_brd_graphs(
+                self.roidb_file, self.image_file, self.split
+            )
         else:
             self.split_mask, self.gt_boxes, self.gt_classes, self.gt_attributes, self.relationships = load_graphs(
                 self.roidb_file, self.split, num_im, num_val_im=num_val_im,
@@ -65,11 +69,6 @@ class VGDataset(torch.utils.data.Dataset):
             self.filenames, self.img_info = load_image_filenames(img_dir, image_file) # length equals to split_mask
             self.filenames = [self.filenames[i] for i in np.where(self.split_mask)[0]]
             self.img_info = [self.img_info[i] for i in np.where(self.split_mask)[0]]
-
-        if bi_rel_det:
-            self.split_mask, self.image_index, self.im_sizes, self.gt_boxes, self.gt_classes, self.relationships = load_brd_graphs(
-                self.roidb_file, self.image_file, self.split
-            )
 
     def __getitem__(self, index):
         #if self.split == 'train':

@@ -45,15 +45,6 @@ except ImportError:
 
 
 def train(cfg, local_rank, distributed, logger):
-    # for reproducibility
-    random.seed(cfg.MODEL.RANDOM_SEED)
-    np.random.seed(cfg.MODEL.RANDOM_SEED)
-    torch.manual_seed(cfg.MODEL.RANDOM_SEED)
-    torch.cuda.manual_seed(cfg.MODEL.RANDOM_SEED)
-    torch.cuda.manual_seed_all(cfg.MODEL.RANDOM_SEED) # # if use multi-GPU
-    cudnn.deterministic = True
-    cudnn.benchmark = False
-
     debug_print(logger, 'prepare training')
     model = build_detection_model(cfg) 
     debug_print(logger, 'end model construction')
@@ -322,6 +313,15 @@ def run_test(cfg, model, distributed, logger):
 
 
 def main():
+    # for reproducibility
+    random.seed(cfg.MODEL.RANDOM_SEED)
+    np.random.seed(cfg.MODEL.RANDOM_SEED)
+    torch.manual_seed(cfg.MODEL.RANDOM_SEED)
+    torch.cuda.manual_seed(cfg.MODEL.RANDOM_SEED)
+    torch.cuda.manual_seed_all(cfg.MODEL.RANDOM_SEED) # # if use multi-GPU
+    cudnn.deterministic = True
+    cudnn.benchmark = False
+    
     parser = argparse.ArgumentParser(description="PyTorch Relation Detection Training")
     parser.add_argument(
         "--config-file",

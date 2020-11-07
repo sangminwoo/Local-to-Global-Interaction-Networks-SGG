@@ -36,7 +36,7 @@ checkpoint_period=50000
 random_seed=0
 
 # preset
-use_bias=False # True, False
+use_bias=True # True, False
 pool_sbj_obj=True # True, False
 use_masking=False # True, False
 # cut
@@ -44,7 +44,7 @@ use_cut=False #True, False
 relevance_dim=256
 num_pair_proposals=256
 # split
-reduce_dim=False # True, False
+reduce_dim=True # True, False
 use_att=True # True, False
 att_all=True # True, False
 att_type='non_local' # awa, cbam, self_att, non_local
@@ -53,7 +53,7 @@ flatten=True # True, False
 use_gin=True # True, False
 gin_layers=1 # 1, 2, 4
 edge2edge=False # True, False
-graph_interact_module='gat' # gcn, gat, again
+graph_interact_module='gcn' # gcn, gat, again, self_att
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \

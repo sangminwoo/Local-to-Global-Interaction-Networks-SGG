@@ -66,6 +66,46 @@ class MultiHeadAttention(nn.Module):
         # TODO
         pass
 
+    def forward_graph(self, proposals, rel_pair_idxs, obj_features, rel_features):
+        device = obj_features.device
+        num_objs = [len(b) for b in proposals] # list[Size:NxO] (N=batch_size, O=num_obj_per_img)
+        num_rels = [r.shape[0] for r in rel_pair_idxs] # list[Size:NxR] (R=num_rel_per_img)
+        obj_features = obj_features.split(num_objs, dim=0) # tuple(N x tensor(Size:OxD)) (D=dim)
+        rel_features = rel_features.split(num_rels, dim=0) # tuple(N x tensor(Size:RxD))
+        max_num_obj = max(num_objs)
+        max_num_rel = max(num_rels)
+
+        padded_obj_features = []
+        padded_rel_features = []
+        for obj_feat, rel_feat in zip(obj_features, rel_features):
+            padded_obj_features.append(self._pad_mask(obj_feat, max_num_obj)) # list(N x tensor(Size:max(O)xD))
+            padded_rel_features.append(self._pad_mask(rel_feat, max_num_rel)) # list(N x tensor(Size:max(R)xD))
+        padded_obj_features = torch.stack(padded_obj_features, dim=0) # Nxmax(O)xD
+        padded_rel_features = torch.stack(padded_rel_features, dim=0) # Nxmax(R)xD
+        padded_features = torch.cat((padded_obj_features, padded_rel_features), dim=1) # Nxmax(O)+max(R)xD
+
+        out = self.forward(padded_features, padded_features, padded_features) # Nxmax(O)+max(R)xD
+        out_obj = out[:,:max_num_obj,:] # Nxmax(O)xD
+        out_rel = out[:,max_num_obj:,:] # Nxmax(R)xD
+
+        # remove pad
+        obj_features = []
+        rel_features = []
+        for out_o, num_obj in zip(out_obj, num_objs):
+            obj_features.append(out_o[:num_obj]) # list(N x tensor(Size:OxD))
+        for out_r, num_rel in zip(out_rel, num_rels):
+            rel_features.append(out_r[:num_rel]) # list(N x tensor(Size:RxD))
+
+        obj_features = torch.cat(obj_features, dim=0)
+        rel_features = torch.cat(rel_features, dim=0)
+        return obj_features, rel_features
+
+    def _pad_mask(self, seq, max_len):
+        N, D = seq.shape
+        pad_len = max_len - N
+        pad = torch.zeros(pad_len, D, device=seq.device)      
+        return torch.cat((seq, pad), dim=0)
+
 ############### Split (CBAM) ################
 class ChannelGate(nn.Module):
     def __init__(self, in_channels, reduction_ratio=16):

@@ -45,7 +45,8 @@ class RelationFeatureExtractor(nn.Module):
             "pool_sbj_obj and masking should not be used at once!"
         self.use_sbj_obj_rect = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING 
         # union rectangle size
-        self.rect_size = resolution if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else resolution * 4 -1
+        self.rect_size = self.rect_size = resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" \
+        and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else resolution * 4 -1
         rect_input = 1 if self.use_sbj_obj_rect else 2
         self.rect_conv = nn.Sequential(*[
             nn.Conv2d(rect_input, in_channels //2, kernel_size=7, stride=2, padding=3, bias=True),
@@ -146,15 +147,15 @@ class RelationFeatureExtractor(nn.Module):
         # merge two parts
         if self.separate_spatial:
             region_features = self.feature_extractor.forward_without_pool(union_vis_features)
-            spatial_features = self.spatial_fc(rect_features.view(rect_features.size(0), -1))
+            spatial_features = self.spatial_fc(union_rect_features.view(union_rect_features.size(0), -1))
             union_features = (region_features, spatial_features)
         else:
-            union_features = union_vis_features + rect_features
+            union_features = union_vis_features + union_rect_features
             union_features = self.feature_extractor.forward_without_pool(union_features) # (total_num_rel, out_channels)
 
         if self.cfg.MODEL.ATTRIBUTE_ON:
             union_att_features = self.att_feature_extractor.pooler(x, union_proposals)
-            union_features_att = union_att_features + rect_features
+            union_features_att = union_att_features + union_rect_features
             union_features_att = self.att_feature_extractor.forward_without_pool(union_features_att)
             union_features = torch.cat((union_features, union_features_att), dim=-1)
             

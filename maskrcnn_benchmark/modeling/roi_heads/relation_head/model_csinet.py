@@ -35,8 +35,10 @@ class CSINet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
 
+
+        in_dim = 151 if self.mode == 'predcls' else 4096+151+4
         self.obj_embedding = nn.Sequential(
-            nn.Linear(4096+151+4, self.dim),
+            nn.Linear(in_dim, self.dim),
             nn.ReLU(True),
             nn.Linear(self.dim, self.dim),
         )
@@ -86,9 +88,11 @@ class CSINet(nn.Module):
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "gcn":
             self.graph_interact = GCN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, dropout=0.1, residual=True)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'gat':
-            self.graph_interact = SpGAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
+            self.graph_interact = GAT(dim=self.dim, num_heads=8, concat=True, dropout=0.1)
         elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'again':
             self.graph_interact = AGAIN(num_layers=cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS, dim=self.dim, num_heads=8, concat=True, residual=False, dropout=0.1)
+        elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == 'self_att':
+            self.graph_interact = MultiHeadAttention(num_heads=8, d_model=self.dim)
 
         self.obj_predictor = nn.Linear(self.dim, self.obj_classes)
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
@@ -145,12 +149,13 @@ class CSINet(nn.Module):
         # 1. init object feats (vis+sem+spa)
         if self.mode == 'predcls':
             obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_logits = to_onehot(obj_labels, self.obj_classes)
+            obj_dists = to_onehot(obj_labels, self.obj_classes)
+            obj_features = self.obj_embedding(obj_dists)
         else:
-            obj_logits = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
-        bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
-        obj_features = torch.cat((roi_features, obj_logits, bboxes), dim=1) # Nx(4096+151+4)
-        obj_features = self.obj_embedding(obj_features)
+            obj_dists = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
+            bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
+            obj_features = torch.cat((roi_features, obj_dists, bboxes), dim=1) # Nx(4096+151+4)
+            obj_features = self.obj_embedding(obj_features)
 
         # not required. use when OOM occurs.
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM:
@@ -175,22 +180,22 @@ class CSINet(nn.Module):
 
         # 4. (global) context aggregation via graph-interaction networks
         if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN:
-            adj = get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
+            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE == "self_att":
+                obj_features, rel_features = self.graph_interact.forward_graph(proposals, rel_pair_idxs, obj_features, rel_features)
+            else:
+                adj = get_adjacency_mat(proposals, rel_pair_idxs, edge2edge=self.edge2edge)
 
-            n = obj_features.size(0)
-            feats = torch.cat((obj_features, rel_features), dim=0) # (n+m)xC
+                n = obj_features.size(0)
+                feats = torch.cat((obj_features, rel_features), dim=0) # (n+m)xC
 
-            graph_out = self.graph_interact(feats, adj)
-            obj_features = graph_out[:n] # nxC
-            rel_features = graph_out[n:] # mxC
+                graph_out = self.graph_interact(feats, adj)
+                obj_features = graph_out[:n] # nxC
+                rel_features = graph_out[n:] # mxC
             
         # 5. predict obj & rel dist
-        if self.mode == 'predcls':
-            obj_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-            obj_dists = to_onehot(obj_labels, self.obj_classes)
-        else:
+        if self.mode != 'predcls':
             obj_dists = self.obj_predictor(obj_features) # nx150
 
         rel_dists = self.rel_predictor(rel_features) # mx50
-        
+
         return obj_dists, rel_dists
