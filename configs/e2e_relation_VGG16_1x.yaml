@@ -2,7 +2,7 @@ MODEL:
   META_ARCHITECTURE: "GeneralizedRCNN"
   WEIGHT: "catalog://ImageNetPretrained/MSRA/R-101"
   BACKBONE:
-    CONV_BODY: "R-101-FPN" # VGG-16
+    CONV_BODY: "VGG-16" # "R-101-FPN"
   RESNETS:
     BACKBONE_OUT_CHANNELS: 512
   RELATION_ON: True

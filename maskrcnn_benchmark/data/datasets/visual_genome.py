@@ -8,6 +8,7 @@ import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
 import random
+import pickle
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_iou
@@ -48,6 +49,7 @@ class VGDataset(torch.utils.data.Dataset):
         self.filter_non_overlap = filter_non_overlap and self.split == 'train'
         self.filter_duplicate_rels = filter_duplicate_rels and self.split == 'train'
         self.transforms = transforms
+        self.bi_rel_det = bi_rel_det
 
         self.ind_to_classes, self.ind_to_predicates, self.ind_to_attributes = load_info(dict_file) # contiguous 151, 51 containing __background__
         self.categories = {i : self.ind_to_classes[i] for i in range(len(self.ind_to_classes))}
@@ -55,10 +57,15 @@ class VGDataset(torch.utils.data.Dataset):
         self.custom_eval = custom_eval
         if self.custom_eval:
             self.get_custom_imgs(custom_path)
-        elif bi_rel_det:
-            self.split_mask, self.image_index, self.im_sizes, self.gt_boxes, self.gt_classes, self.relationships = load_brd_graphs(
-                self.roidb_file, self.image_file, self.split
+        elif self.bi_rel_det:
+            self.split_mask, self.gt_boxes, self.gt_classes, self.gt_attributes, self.relationships = load_brd_graphs(
+                self.roidb_file, self.split, num_im,  num_val_im=0,
+                filter_empty_rels=filter_empty_rels,
+                filter_non_overlap=self.filter_non_overlap
             )
+            self.filenames, self.img_info = load_image_filenames(img_dir, image_file) # length equals to split_mask
+            self.filenames = [self.filenames[i] for i in np.where(self.split_mask)[0]]
+            self.img_info = [self.img_info[i] for i in np.where(self.split_mask)[0]]
         else:
             self.split_mask, self.gt_boxes, self.gt_classes, self.gt_attributes, self.relationships = load_graphs(
                 self.roidb_file, self.split, num_im, num_val_im=num_val_im,
@@ -424,77 +431,108 @@ def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter
 
     return split_mask, boxes, gt_classes, gt_attributes, relationships
 
-def load_graphs_v2(graphs_file, images_file, mode='train'):
+def load_brd_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter_non_overlap):
     '''load dataset for bidirectional relationship detection'''
-    if mode not in ('train', 'val', 'test'):
-        raise ValueError('{} invalid'.format(mode))
-
-    roi_h5 = h5py.File(graphs_file, 'r')
-    im_h5 = h5py.File(images_file, 'r')
+    roi_h5 = h5py.File(roidb_file, 'r')
 
     with open("bidirectional_rels.pkl", "rb") as f:
         bi_rels = pickle.load(f)
 
-    bi_rel_idx = np.array(list(bi_rels.keys())) # 11683
-    total_imgs = len(bi_rel_idx) # 11683
-    train_imgs = int(total_imgs*0.7) # 8178
-    # train_idx = bi_rel_idx[:train_imgs] # 70% = 8178
-    # test_idx = bi_rel_idx[train_imgs:] # 30% = 3505
+    bi_rel_idx = np.array(list(bi_rels.keys())) # array([     0,      8,     15, ..., 108066, 108068, 108071])
+    total_bi_rel_imgs = len(bi_rel_idx) # len: 11682
+    train_idx = bi_rel_idx[:int(total_bi_rel_imgs*0.7)] # 70% = 8178
+    test_idx = bi_rel_idx[int(total_bi_rel_imgs*0.7):] # 30% = 3505
 
-    data_split = np.zeros(total_imgs)
-    data_split[train_imgs:] = 2
-    split = 2 if mode == 'test' else 0
-    split_mask = data_split == split
+    total_imgs = len(roi_h5['img_to_first_box']) # len: 108073 
+    data_split = np.ones(total_imgs) # len: 108073 
+    data_split[train_idx] = 0
+    data_split[test_idx] = 2
 
-    '''preprocess'''
-    idx_lookup = dict()
-    for img_idx in bi_rel_idx:
-        idx_set = set()
-        for i, obj_pair in enumerate(bi_rels[img_idx]['idx']):
-            idx_set.update(obj_pair)
-        for i, idx in enumerate(sorted(idx_set)):
-            if img_idx not in idx_lookup.keys():
-                idx_lookup.update({img_idx:{idx:i}})
-            else:
-                idx_lookup[img_idx][idx] = i
-        
-    for i in bi_rel_idx:
-        new_idxs = []
-        for idx_pair in bi_rels[i]['idx']:
-            new_idx = [idx_lookup[i][idx_pair[0]], idx_lookup[i][idx_pair[1]]]
-            new_idxs.append(new_idx)
-        bi_rels[i].update({'idx':new_idxs})
+    split_flag = 2 if split == 'test' else 0
+    split_mask = data_split == split_flag
+
+    # Filter out images without bounding boxes
+    split_mask &= roi_h5['img_to_first_box'][:] >= 0
+    if filter_empty_rels:
+        split_mask &= roi_h5['img_to_first_rel'][:] >= 0
+
+    image_index = np.where(split_mask)[0]
+    if num_im > -1:
+        image_index = image_index[:num_im]
+    if num_val_im > 0:
+        if split == 'val':
+            image_index = image_index[:num_val_im]
+        elif split == 'train':
+            image_index = image_index[num_val_im:]
+
+    split_mask = np.zeros_like(data_split).astype(bool)
+    split_mask[image_index] = True
+
+    # Get box information
+    all_labels = roi_h5['labels'][:, 0]
+    all_attributes = roi_h5['attributes'][:, :]
+    all_boxes = roi_h5['boxes_{}'.format(BOX_SCALE)][:]  # cx,cy,w,h
+    assert np.all(all_boxes[:, :2] >= 0)  # sanity check
+    assert np.all(all_boxes[:, 2:] > 0)  # no empty box
+
+    # convert from xc, yc, w, h to x1, y1, x2, y2
+    all_boxes[:, :2] = all_boxes[:, :2] - all_boxes[:, 2:] / 2
+    all_boxes[:, 2:] = all_boxes[:, :2] + all_boxes[:, 2:]
+
+    im_to_first_box = roi_h5['img_to_first_box'][split_mask]
+    im_to_last_box = roi_h5['img_to_last_box'][split_mask]
+    im_to_first_rel = roi_h5['img_to_first_rel'][split_mask]
+    im_to_last_rel = roi_h5['img_to_last_rel'][split_mask]
+
+    # load relation labels
+    _relations = roi_h5['relationships'][:]
+    _relation_predicates = roi_h5['predicates'][:, 0]
+    assert (im_to_first_rel.shape[0] == im_to_last_rel.shape[0])
+    assert (_relations.shape[0] == _relation_predicates.shape[0])  # sanity check
 
     # Get everything by image.
-    images_index_valid = bi_rel_idx[split_mask]
-    im_sizes = []
     boxes = []
     gt_classes = []
+    gt_attributes = []
     relationships = []
+    for i in range(len(image_index)):
+        i_obj_start = im_to_first_box[i]
+        i_obj_end = im_to_last_box[i]
+        i_rel_start = im_to_first_rel[i]
+        i_rel_end = im_to_last_rel[i]
 
-    for idx in images_index_valid:
-        obj_idx = bi_rels[idx]['idx']
-        size = bi_rels[idx]['size']
-        pred_label = bi_rels[idx]['pred']
-        obj_label = bi_rels[idx]['label']
-        bbox = bi_rels[idx]['bbox']
+        boxes_i = all_boxes[i_obj_start : i_obj_end + 1, :]
+        gt_classes_i = all_labels[i_obj_start : i_obj_end + 1]
+        gt_attributes_i = all_attributes[i_obj_start : i_obj_end + 1, :]
 
-        im_sizes.append(np.array(size))
-        
-        box_i = []
-        for box in bbox.values():
-            box_i.append(box)
-        boxes.append(np.array(box_i))
+        if i_rel_start >= 0:
+            predicates = _relation_predicates[i_rel_start : i_rel_end + 1]
+            obj_idx = _relations[i_rel_start : i_rel_end + 1] - i_obj_start # range is [0, num_box)
+            assert np.all(obj_idx >= 0)
+            assert np.all(obj_idx < boxes_i.shape[0])
+            rels = np.column_stack((obj_idx, predicates)) # (num_rel, 3), representing sub, obj, and pred
+        else:
+            assert not filter_empty_rels
+            rels = np.zeros((0, 3), dtype=np.int32)
 
-        class_i = []
-        for label in obj_label.values():
-            class_i.append(label)
-        class_i = np.array(class_i)
-        gt_classes.append(class_i)
+        if filter_non_overlap:
+            assert split == 'train'
+            # construct BoxList object to apply boxlist_iou method
+            # give a useless (height=0, width=0)
+            boxes_i_obj = BoxList(boxes_i, (1000, 1000), 'xyxy')
+            inters = boxlist_iou(boxes_i_obj, boxes_i_obj)
+            rel_overs = inters[rels[:, 0], rels[:, 1]]
+            inc = np.where(rel_overs > 0.0)[0]
 
-        rels = np.column_stack((np.array(obj_idx), np.array(pred_label)))
+            if inc.size > 0:
+                rels = rels[inc]
+            else:
+                split_mask[image_index[i]] = 0
+                continue
+
+        boxes.append(boxes_i)
+        gt_classes.append(gt_classes_i)
+        gt_attributes.append(gt_attributes_i)
         relationships.append(rels)
 
-    im_sizes = np.stack(im_sizes, 0)
-    # gt_classes = np.array(gt_classes)
-    return split_mask, images_index_valid, im_sizes, boxes, gt_classes, relationships
+    return split_mask, boxes, gt_classes, gt_attributes, relationships

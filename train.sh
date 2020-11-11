@@ -34,18 +34,19 @@ if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 	config="configs/e2e_relation_detector_VGG16_1x.yaml"
 else
 	run="tools/relation_train_net.py"
-	config="configs/e2e_relation_VGG16_1x.yaml" # "configs/e2e_relation_VGG16_1x.yaml", "configs/e2e_relation_X_101_32_8_FPN_1x.yaml"
+	config="configs/e2e_relation_VGG16_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
 fi
 detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
 predictor="CSIPredictor"
+backbone="VGG-16"
 pre_val=False
 resolution=7
 train_img_per_batch=1
 test_img_per_batch=1
 dtype="float16"
-max_iter=50000
+max_iter=100000
 val_period=5000
-checkpoint_period=50000
+checkpoint_period=5000
 random_seed=0
 
 # preset
@@ -75,6 +76,7 @@ if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 		--nproc_per_node=${#num_gpu} ${run} \
 		--config-file ${config} \
 		MODEL.RELATION_ON ${relation_on} \
+		MODEL.BACKBONE.CONV_BODY ${backbone} \
 		SOLVER.PRE_VAL ${pre_val} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
 		TEST.IMS_PER_BATCH ${test_img_per_batch} \
@@ -87,6 +89,7 @@ if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 		python ${run} \
 		--config-file ${config} \
 		MODEL.RELATION_ON ${relation_on} \
+		MODEL.BACKBONE.CONV_BODY ${backbone} \
 		SOLVER.PRE_VAL ${pre_val} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
 		TEST.IMS_PER_BATCH ${test_img_per_batch} \
@@ -101,6 +104,7 @@ else
 		python -m torch.distributed.launch --nproc_per_node=${#num_gpu} ${run} \
 		--config-file ${config} \
 		MODEL.RELATION_ON ${relation_on} \
+		MODEL.BACKBONE.CONV_BODY ${backbone} \
 		MODEL.PRETRAINED_DETECTOR_CKPT ${detector_checkpoint} \
 		MODEL.RANDOM_SEED ${random_seed} \
 		MODEL.ROI_RELATION_HEAD.USE_GT_BOX ${use_gt_box} \
@@ -134,6 +138,8 @@ else
 		CUDA_VISIBLE_DEVICES=${gpu} \
 		python ${run} \
 		--config-file ${config} \
+		MODEL.RELATION_ON ${relation_on} \
+		MODEL.BACKBONE.CONV_BODY ${backbone} \
 		MODEL.PRETRAINED_DETECTOR_CKPT ${detector_checkpoint} \
 		MODEL.RANDOM_SEED ${random_seed} \
 		MODEL.ROI_RELATION_HEAD.USE_GT_BOX ${use_gt_box} \
