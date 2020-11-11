@@ -30,8 +30,8 @@ class CSINet(nn.Module):
             self.mode = 'sgdet'
 
         self.mask_size = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        self.dim = 256
-        self.out_dim = 256
+        self.dim = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
+        self.out_dim = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
 
@@ -58,7 +58,7 @@ class CSINet(nn.Module):
                 nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
                 nn.Conv2d(in_channels=self.dim//2, out_channels=self.out_dim, kernel_size=3, stride=1, padding=1)
             )
-            resolution = 4
+            resolution = resolution//2+1
 
         self.instance_emb = nn.ModuleList([
                                 nn.Sequential(

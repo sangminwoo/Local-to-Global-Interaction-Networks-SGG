@@ -29,27 +29,32 @@ class CSIPredictor(nn.Module):
         self.csinet = CSINet(config, in_channels)
 
         # post decoding
-        self.hidden_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_HIDDEN_DIM
-        self.pooling_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_POOLING_DIM
+        self.hidden_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_HIDDEN_DIM # 512
+        self.pooling_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_POOLING_DIM # 4096
 
-        if self.pooling_dim != config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM:
-            self.union_single_not_match = True
-            self.up_dim = nn.Linear(config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM, self.pooling_dim)
-            layer_init(self.up_dim, xavier=True)
-        else:
-            self.union_single_not_match = False
+        # if self.pooling_dim != config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM: # 2048
+        #     self.union_single_not_match = True
+        #     self.up_dim = nn.ModuleList([
+        #         nn.Linear(config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM, self.pooling_dim) for _ in range(3)])
+        #     for layer in self.up_dim:
+        #         layer_init(layer, xavier=True)
+        # else:
+        #     self.union_single_not_match = False
 
         # freq 
         if self.use_bias:
             statistics = get_dataset_statistics(config)
             self.freq_bias = FrequencyBias(config, statistics)
 
-    def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger=None):
-        if self.union_single_not_match:
-            union_features = self.up_dim(union_features)
+    def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, rel_features, logger=None):
+        # if self.union_single_not_match:
+        #     rel_feats = []
+        #     for rel_feat, up_dim in zip(rel_features, self.up_dim):
+        #         rel_feats.append(up_dim(rel_feat))
+        #     rel_features = rel_feats
 
         # encode context infomation
-        obj_dists, rel_dists = self.csinet(roi_features, proposals, union_features, rel_pair_idxs, logger)
+        obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
