@@ -54,7 +54,7 @@ flatten=True # True, False
 use_gin=True # True, False
 gin_layers=4 # 1, 2, 4
 edge2edge=False # True, False
-graph_interact_module='gcn' # gcn, gat, again, self_att
+graph_interact_module='gat' # gcn, gat, again, self_att
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \

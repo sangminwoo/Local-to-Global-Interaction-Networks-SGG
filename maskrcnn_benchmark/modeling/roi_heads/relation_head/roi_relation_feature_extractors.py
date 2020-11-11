@@ -11,6 +11,7 @@ from maskrcnn_benchmark.modeling.make_layers import make_fc
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_union, boxlist_intersection
 from maskrcnn_benchmark.modeling.roi_heads.box_head.roi_box_feature_extractors import make_roi_box_feature_extractor
 from maskrcnn_benchmark.modeling.roi_heads.attribute_head.roi_attribute_feature_extractors import make_roi_attribute_feature_extractor
+from .utils_motifs import to_onehot
 
 @registry.ROI_RELATION_FEATURE_EXTRACTORS.register("RelationFeatureExtractor")
 class RelationFeatureExtractor(nn.Module):
@@ -21,9 +22,18 @@ class RelationFeatureExtractor(nn.Module):
         super(RelationFeatureExtractor, self).__init__()
         self.cfg = cfg.clone()
         # should corresponding to tail_feature_map function in neural-motifs
-        resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
+        self.resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
         pool_all_levels = cfg.MODEL.ROI_RELATION_HEAD.POOLING_ALL_LEVELS
         
+        # mode
+        if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
+            if self.cfg.MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL:
+                self.mode = 'predcls'
+            else: 
+                self.mode = 'sgcls'
+        else:
+            self.mode = 'sgdet'
+
         if cfg.MODEL.ATTRIBUTE_ON:
             self.feature_extractor = make_roi_box_feature_extractor(cfg, in_channels, half_out=True, cat_all_levels=pool_all_levels)
             self.att_feature_extractor = make_roi_attribute_feature_extractor(cfg, in_channels, half_out=True, cat_all_levels=pool_all_levels)
@@ -43,12 +53,12 @@ class RelationFeatureExtractor(nn.Module):
 
         assert not(self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING),\
             "pool_sbj_obj and masking should not be used at once!"
-        self.use_sbj_obj_rect = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING 
+        self.use_sbj_obj = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING 
         # union rectangle size
-        self.rect_size = self.rect_size = resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" \
-        and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else resolution * 4 -1
-        rect_input = 1 if self.use_sbj_obj_rect else 2
-        self.rect_conv = nn.Sequential(*[
+        self.rect_size = self.resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" \
+        and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else self.resolution * 4 -1
+        rect_input = 1 if self.use_sbj_obj else 2
+        self.rect_conv = nn.Sequential(
             nn.Conv2d(rect_input, in_channels //2, kernel_size=7, stride=2, padding=3, bias=True),
             nn.ReLU(inplace=True),
             nn.BatchNorm2d(in_channels//2, momentum=0.01),
@@ -56,25 +66,59 @@ class RelationFeatureExtractor(nn.Module):
             nn.Conv2d(in_channels // 2, in_channels, kernel_size=3, stride=1, padding=1, bias=True),
             nn.ReLU(inplace=True),
             nn.BatchNorm2d(in_channels, momentum=0.01),
-            ])   
+        )
+        self.obj_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
+        self.logit_conv = nn.Sequential(
+            nn.Conv2d(self.obj_classes, in_channels //2, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(in_channels//2, momentum=0.01),
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels // 2, in_channels, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(in_channels, momentum=0.01),
+        )
+
 
     def forward(self, x, proposals, rel_pair_idxs=None):
         device = x[0].device
+        # for pooling visual feat
         union_proposals = []
         head_proposals = []
         tail_proposals = []
+        
+        # spatial feat
         union_rect_inputs = []
         head_rect_inputs = []
         tail_rect_inputs = []
+        
+        # semantic feat
+        union_logits = []
+        head_logits = []
+        tail_logits = []
         for proposal, rel_pair_idx in zip(proposals, rel_pair_idxs):
             head_proposal = proposal[rel_pair_idx[:, 0]]
             tail_proposal = proposal[rel_pair_idx[:, 1]]
             union_proposal = boxlist_union(head_proposal, tail_proposal)
             union_proposals.append(union_proposal)
 
-            if self.use_sbj_obj_rect:
+            if self.mode == 'predcls':
+                head_labels = proposal[rel_pair_idx[:, 0]].get_field("labels")
+                head_logit = to_onehot(head_labels, self.obj_classes)
+                tail_labels = proposal[rel_pair_idx[:, 1]].get_field("labels")
+                tail_logit = to_onehot(tail_labels, self.obj_classes)
+            else:
+                head_logit = torch.cat([proposal[rel_pair_idx[:, 0]].get_field("pred_scores") for proposal in proposals], 0) # "predict_logits"
+                tail_logit = torch.cat([proposal[rel_pair_idx[:, 1]].get_field("pred_scores") for proposal in proposals], 0) # "predict_logits"
+
+            union_logit = head_logit + tail_logit
+            union_logits.append(union_logit)
+
+            if self.use_sbj_obj:
                 head_proposals.append(head_proposal)
                 tail_proposals.append(tail_proposal)
+
+                head_logits.append(head_logit)
+                tail_logits.append(tail_logit)
 
             # use range to construct rectangle, sized (rect_size, rect_size)
             num_rel = len(rel_pair_idx)
@@ -95,37 +139,50 @@ class RelationFeatureExtractor(nn.Module):
                         (dummy_y_range >= tail_proposal.bbox[:,1].floor().view(-1,1,1).long()) & \
                         (dummy_y_range <= tail_proposal.bbox[:,3].ceil().view(-1,1,1).long())).float()
 
-            if self.use_sbj_obj_rect:
-                head_rect_input = head_rect.unsqueeze(1)
-                tail_rect_input = tail_rect.unsqueeze(1)
-                union_rect_input = head_rect_input + tail_rect_input
+        if self.use_sbj_obj:
+            head_rect_input = head_rect.unsqueeze(1)
+            tail_rect_input = tail_rect.unsqueeze(1)
+            union_rect_input = head_rect_input + tail_rect_input
 
-                union_rect_inputs.append(union_rect_input)
-                head_rect_inputs.append(head_rect_input)
-                tail_rect_inputs.append(tail_rect_input)
-            else:
-                union_rect_input = torch.stack((head_rect, tail_rect), dim=1) # (num_rel, 2, rect_size, rect_size)
-                union_rect_inputs.append(union_rect_input)
+            union_rect_inputs.append(union_rect_input)
+            head_rect_inputs.append(head_rect_input)
+            tail_rect_inputs.append(tail_rect_input)
+
+            union_logits = torch.cat(union_logits, dim=0) # Nx151
+            head_logits = torch.cat(head_logits, dim=0) # Nx151
+            tail_logits = torch.cat(tail_logits, dim=0) # Nx151
+        else:
+            union_rect_input = torch.stack((head_rect, tail_rect), dim=1) # (num_rel, 2, rect_size, rect_size)
+            union_rect_inputs.append(union_rect_input)
+            union_logits = torch.cat(union_logits, dim=0) # Nx151
      
         # rectangle feature. size (total_num_rel, in_channels, POOLER_RESOLUTION, POOLER_RESOLUTION)
         union_rect_inputs = torch.cat(union_rect_inputs, dim=0)
         union_rect_features = self.rect_conv(union_rect_inputs)
+        union_logit_inputs = union_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution) # Nx151x1x1 -> Nx151x7x7
+        union_logit_features = self.logit_conv(union_logit_inputs)
 
-        if self.use_sbj_obj_rect:
+        if self.use_sbj_obj:
             head_rect_inputs = torch.cat(head_rect_inputs, dim=0)
             tail_rect_inputs = torch.cat(tail_rect_inputs, dim=0)
             head_rect_features = self.rect_conv(head_rect_inputs)
             tail_rect_features = self.rect_conv(tail_rect_inputs)
+            
+            head_logit_inputs = head_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
+            tail_logit_inputs = tail_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
+            head_logit_features = self.logit_conv(head_logit_inputs)
+            tail_logit_features = self.logit_conv(tail_logit_inputs)
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
             if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ:
-                union_features = self.feature_extractor.pooler(x, union_proposals)
+                union_features = self.feature_extractor.pooler(x, union_proposals) # NxCx7x7
                 head_features = self.feature_extractor.pooler(x, head_proposals)
                 tail_features = self.feature_extractor.pooler(x, tail_proposals)
 
-                union_features = union_features + union_rect_features
-                head_features = head_features + head_rect_features
-                tail_features = tail_features + tail_rect_features
+                # add spatial & semantics 
+                union_features = union_features + union_rect_features + union_logit_features
+                head_features = head_features + head_rect_features + head_logit_features
+                tail_features = tail_features + tail_rect_features + tail_logit_features
 
                 return head_features, tail_features, union_features
 

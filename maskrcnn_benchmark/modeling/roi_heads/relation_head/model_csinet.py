@@ -33,8 +33,6 @@ class CSINet(nn.Module):
         self.dim = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
         self.out_dim = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.pred_feature_extractor = make_roi_relation_feature_extractor(cfg, in_channels)
-
 
         in_dim = 151 if self.mode == 'predcls' else 4096+151+4
         self.obj_embedding = nn.Sequential(
@@ -81,7 +79,6 @@ class CSINet(nn.Module):
             self.att = AWAttention(channels=self.out_dim*3, height=resolution*3, width=resolution*3, hidden_dim=self.dim*3, pool='avg', residual=True) if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE \
                 else nn.ModuleList([AWAttention(channels=self.out_dim, height=resolution, width=resolution, hidden_dim=self.out_dim, pool='avg', residual=True) for _ in range(3)])
         
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.compose = RelationalEmbedding(in_dim=self.dim, hid_dim=self.dim, out_dim=self.dim)
 
         self.edge2edge = cfg.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE
@@ -152,7 +149,7 @@ class CSINet(nn.Module):
             obj_dists = to_onehot(obj_labels, self.obj_classes)
             obj_features = self.obj_embedding(obj_dists)
         else:
-            obj_dists = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151
+            obj_dists = torch.cat([proposal.get_field("pred_scores") for proposal in proposals], 0) # 20x151 "predict_logits"
             bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
             obj_features = torch.cat((roi_features, obj_dists, bboxes), dim=1) # Nx(4096+151+4)
             obj_features = self.obj_embedding(obj_features)
