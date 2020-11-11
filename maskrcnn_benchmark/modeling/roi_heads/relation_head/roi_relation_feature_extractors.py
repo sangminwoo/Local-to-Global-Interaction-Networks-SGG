@@ -107,8 +107,8 @@ class RelationFeatureExtractor(nn.Module):
                 tail_labels = proposal[rel_pair_idx[:, 1]].get_field("labels")
                 tail_logit = to_onehot(tail_labels, self.obj_classes)
             else:
-                head_logit = torch.cat([proposal[rel_pair_idx[:, 0]].get_field("pred_scores") for proposal in proposals], 0) # "predict_logits"
-                tail_logit = torch.cat([proposal[rel_pair_idx[:, 1]].get_field("pred_scores") for proposal in proposals], 0) # "predict_logits"
+                head_logit = torch.cat([proposal[rel_pair_idx[:, 0]].get_field("predict_logits") for proposal in proposals], 0)
+                tail_logit = torch.cat([proposal[rel_pair_idx[:, 1]].get_field("predict_logits") for proposal in proposals], 0)
 
             union_logit = head_logit + tail_logit
             union_logits.append(union_logit)
@@ -139,28 +139,28 @@ class RelationFeatureExtractor(nn.Module):
                         (dummy_y_range >= tail_proposal.bbox[:,1].floor().view(-1,1,1).long()) & \
                         (dummy_y_range <= tail_proposal.bbox[:,3].ceil().view(-1,1,1).long())).float()
 
+            if self.use_sbj_obj:
+                head_rect_input = head_rect.unsqueeze(1)
+                tail_rect_input = tail_rect.unsqueeze(1)
+                union_rect_input = head_rect_input + tail_rect_input
+
+                union_rect_inputs.append(union_rect_input)
+                head_rect_inputs.append(head_rect_input)
+                tail_rect_inputs.append(tail_rect_input)
+            else:
+                union_rect_input = torch.stack((head_rect, tail_rect), dim=1) # (num_rel, 2, rect_size, rect_size)
+                union_rect_inputs.append(union_rect_input)
+     
+        union_logits = torch.cat(union_logits, dim=0) # Nx151
         if self.use_sbj_obj:
-            head_rect_input = head_rect.unsqueeze(1)
-            tail_rect_input = tail_rect.unsqueeze(1)
-            union_rect_input = head_rect_input + tail_rect_input
-
-            union_rect_inputs.append(union_rect_input)
-            head_rect_inputs.append(head_rect_input)
-            tail_rect_inputs.append(tail_rect_input)
-
-            union_logits = torch.cat(union_logits, dim=0) # Nx151
             head_logits = torch.cat(head_logits, dim=0) # Nx151
             tail_logits = torch.cat(tail_logits, dim=0) # Nx151
-        else:
-            union_rect_input = torch.stack((head_rect, tail_rect), dim=1) # (num_rel, 2, rect_size, rect_size)
-            union_rect_inputs.append(union_rect_input)
-            union_logits = torch.cat(union_logits, dim=0) # Nx151
-     
+
         # rectangle feature. size (total_num_rel, in_channels, POOLER_RESOLUTION, POOLER_RESOLUTION)
         union_rect_inputs = torch.cat(union_rect_inputs, dim=0)
         union_rect_features = self.rect_conv(union_rect_inputs)
         union_logit_inputs = union_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution) # Nx151x1x1 -> Nx151x7x7
-        union_logit_features = self.logit_conv(union_logit_inputs)
+        union_logit_features = self.logit_conv(union_logit_inputs) # Nx151x7x7
 
         if self.use_sbj_obj:
             head_rect_inputs = torch.cat(head_rect_inputs, dim=0)
@@ -170,8 +170,8 @@ class RelationFeatureExtractor(nn.Module):
             
             head_logit_inputs = head_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
             tail_logit_inputs = tail_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
-            head_logit_features = self.logit_conv(head_logit_inputs)
-            tail_logit_features = self.logit_conv(tail_logit_inputs)
+            head_logit_features = self.logit_conv(head_logit_inputs) # Nx151x7x7
+            tail_logit_features = self.logit_conv(tail_logit_inputs) # Nx151x7x7
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
             if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ:

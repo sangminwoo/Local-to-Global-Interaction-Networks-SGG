@@ -34,7 +34,8 @@ class CSINet(nn.Module):
         self.out_dim = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
         self.avgpool = nn.AdaptiveAvgPool2d(1)
 
-        in_dim = 151 if self.mode == 'predcls' else 4096+151+4
+        in_dim = self.obj_classes if self.mode == 'predcls' \
+        else cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM+self.obj_classes+4
         self.obj_embedding = nn.Sequential(
             nn.Linear(in_dim, self.dim),
             nn.ReLU(True),
@@ -149,7 +150,7 @@ class CSINet(nn.Module):
             obj_dists = to_onehot(obj_labels, self.obj_classes)
             obj_features = self.obj_embedding(obj_dists)
         else:
-            obj_dists = torch.cat([proposal.get_field("pred_scores") for proposal in proposals], 0) # 20x151 "predict_logits"
+            obj_dists = torch.cat([proposal.get_field("predict_logits") for proposal in proposals], 0) # 20x151 "predict_logits"
             bboxes = torch.cat([proposal.bbox for proposal in proposals], 0) # 20x4
             obj_features = torch.cat((roi_features, obj_dists, bboxes), dim=1) # Nx(4096+151+4)
             obj_features = self.obj_embedding(obj_features)

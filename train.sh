@@ -27,6 +27,7 @@ run="tools/relation_train_net.py"
 config="configs/e2e_relation_VGG16_1x.yaml" # "configs/e2e_relation_VGG16_1x.yaml", "configs/e2e_relation_X_101_32_8_FPN_1x.yaml"
 detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
 predictor="CSIPredictor"
+pre_val=False
 resolution=7
 train_img_per_batch=1
 test_img_per_batch=2
@@ -54,7 +55,7 @@ flatten=True # True, False
 use_gin=True # True, False
 gin_layers=4 # 1, 2, 4
 edge2edge=False # True, False
-graph_interact_module='gat' # gcn, gat, again, self_att
+graph_interact_module='gcn' # gcn, gat, again, self_att
 
 if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	CUDA_VISIBLE_DEVICES=${gpu} \
@@ -67,6 +68,7 @@ if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
 	DATASETS.BI_REL_DET ${brd} \
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
+	SOLVER.PRE_VAL ${pre_val} \
 	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
@@ -99,6 +101,7 @@ else # single-gpu training
 	DATASETS.BI_REL_DET ${brd} \
 	MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 	MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
+	SOLVER.PRE_VAL ${pre_val} \
 	MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 	MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 	MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
