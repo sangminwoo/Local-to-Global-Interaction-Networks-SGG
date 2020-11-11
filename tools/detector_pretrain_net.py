@@ -24,7 +24,7 @@ from maskrcnn_benchmark.utils.checkpoint import DetectronCheckpointer
 from maskrcnn_benchmark.utils.collect_env import collect_env_info
 from maskrcnn_benchmark.utils.comm import synchronize, get_rank
 from maskrcnn_benchmark.utils.imports import import_file
-from maskrcnn_benchmark.utils.logger import setup_logger
+from maskrcnn_benchmark.utils.logger import setup_logger, debug_print, get_timestamp
 from maskrcnn_benchmark.utils.miscellaneous import mkdir, save_config
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
 
@@ -284,7 +284,8 @@ def main():
     if output_dir:
         mkdir(output_dir)
 
-    logger = setup_logger("maskrcnn_benchmark", output_dir, get_rank())
+    logger = setup_logger("maskrcnn_benchmark", output_dir, get_rank(),
+        filename="{}_{}.txt".format(cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR, get_timestamp()))
     logger.info("Using {} GPUs".format(num_gpus))
     logger.info(args)
 

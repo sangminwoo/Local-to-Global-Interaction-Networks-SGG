@@ -64,5 +64,5 @@ SOLVER:
   STEPS: (30000, 45000)
   MAX_ITER: 90000
   PRINT_GRAD_FREQ: 5000
-OUTPUT_DIR: './output/relation_baseline'
+OUTPUT_DIR: './checkpoints/pretrained_faster_rcnn/vgg_backbone'
 
