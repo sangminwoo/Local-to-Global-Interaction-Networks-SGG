@@ -59,7 +59,7 @@ class VGDataset(torch.utils.data.Dataset):
             self.get_custom_imgs(custom_path)
         elif self.bi_rel_det:
             self.split_mask, self.gt_boxes, self.gt_classes, self.gt_attributes, self.relationships = load_brd_graphs(
-                self.roidb_file, self.split, num_im,  num_val_im=0,
+                self.roidb_file, self.split, num_im,  num_val_im=1000,
                 filter_empty_rels=filter_empty_rels,
                 filter_non_overlap=self.filter_non_overlap
             )

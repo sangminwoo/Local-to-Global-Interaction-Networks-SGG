@@ -30,7 +30,6 @@ class SceneGraphEvaluation(ABC):
         print("Generate Print String")
         pass
 
-
 """
 Traditional Recall, implement based on:
 https://github.com/rowanz/neural-motifs
@@ -148,6 +147,63 @@ class SGNoGraphConstraintRecall(SceneGraphEvaluation):
             match = reduce(np.union1d, nogc_pred_to_gt[:k])
             rec_i = float(len(match)) / float(gt_rels.shape[0])
             self.result_dict[mode + '_recall_nogc'][k].append(rec_i)
+
+        return local_container
+
+"""
+BiRecall
+"""
+class SGBiRecall(SceneGraphEvaluation):
+    def __init__(self, result_dict):
+        super(SGBiRecall, self).__init__(result_dict)
+
+    def register_container(self, mode):
+        self.result_dict[mode + '_bi_recall'] = {2: [], 4: [], 8: [], 16: []}
+
+    def generate_print_string(self, mode):
+        result_str = 'SGG eval: '
+        for k, v in self.result_dict[mode + '_bi_recall'].items():
+            result_str += ' bi-R @ %d: %.4f; ' % (k, np.mean(v))
+        result_str += ' for mode=%s, type=Bi Recall.' % mode
+        result_str += '\n'
+        return result_str
+
+    def calculate_recall(self, global_container, local_container, mode):
+        pred_rel_inds = local_container['pred_rel_inds']
+        rel_scores = local_container['rel_scores']
+        gt_rels = local_container['gt_rels']
+        gt_classes = local_container['gt_classes']
+        gt_boxes = local_container['gt_boxes']
+        pred_classes = local_container['pred_classes']
+        pred_boxes = local_container['pred_boxes']
+        obj_scores = local_container['obj_scores']
+
+        iou_thres = global_container['iou_thres']
+
+        pred_rels = np.column_stack((pred_rel_inds, 1+rel_scores[:,1:].argmax(1)))
+        pred_scores = rel_scores[:,1:].max(1)
+
+        gt_triplets, gt_triplet_boxes, _ = _triplet(gt_rels, gt_classes, gt_boxes)
+        local_container['gt_triplets'] = gt_triplets
+        local_container['gt_triplet_boxes'] = gt_triplet_boxes
+
+        pred_triplets, pred_triplet_boxes, pred_triplet_scores = _triplet(
+                pred_rels, pred_classes, pred_boxes, pred_scores, obj_scores)
+
+        # Compute recall. It's most efficient to match once and then do recall after
+        recall_k = _compute_bi_pred_matches(
+            gt_triplets,
+            pred_triplets,
+            pred_triplet_scores,
+            gt_triplet_boxes,
+            pred_triplet_boxes,
+            iou_thres,
+            top_k=[2,4,8,16],
+            phrdet=mode=='phrdet',
+        )
+
+        for k, recall in zip(self.result_dict[mode + '_bi_recall'], recall_k):
+            self.result_dict[mode + '_bi_recall'][k].append(recall)
 
         return local_container
 
@@ -460,7 +516,6 @@ class SGAccumulateRecall(SceneGraphEvaluation):
 
         return 
 
-
 def _triplet(relations, classes, boxes, predicate_scores=None, class_scores=None):
     """
     format relations of (sub_id, ob_id, pred_label) into triplets of (sub_label, pred_label, ob_label)
@@ -486,7 +541,6 @@ def _triplet(relations, classes, boxes, predicate_scores=None, class_scores=None
         ))
 
     return triplets, triplet_boxes, triplet_scores
-
 
 def _compute_pred_matches(gt_triplets, pred_triplets,
                  gt_boxes, pred_boxes, iou_thres, phrdet=False):
@@ -525,6 +579,104 @@ def _compute_pred_matches(gt_triplets, pred_triplets,
 
         for i in np.where(keep_inds)[0][inds]:
             pred_to_gt[i].append(int(gt_ind))
+
     return pred_to_gt
 
+def _compute_pred_matches(gt_triplets, pred_triplets,
+                 gt_boxes, pred_boxes, iou_thres, phrdet=False):
+    """
+    Given a set of predicted triplets, return the list of matching GT's for each of the
+    given predictions
+    Return:
+        pred_to_gt [List of List]
+    """
+    # This performs a matrix multiplication-esque thing between the two arrays
+    # Instead of summing, we want the equality, so we reduce in that way
+    # The rows correspond to GT triplets, columns to pred triplets
+    keeps = intersect_2d(gt_triplets, pred_triplets)
+    gt_has_match = keeps.any(1)
+    pred_to_gt = [[] for x in range(pred_boxes.shape[0])]
+    for gt_ind, gt_box, keep_inds in zip(np.where(gt_has_match)[0],
+                                         gt_boxes[gt_has_match],
+                                         keeps[gt_has_match],
+                                         ):
+        boxes = pred_boxes[keep_inds]
+        if phrdet:
+            # Evaluate where the union box > 0.5
+            gt_box_union = gt_box.reshape((2, 4))
+            gt_box_union = np.concatenate((gt_box_union.min(0)[:2], gt_box_union.max(0)[2:]), 0)
 
+            box_union = boxes.reshape((-1, 2, 4))
+            box_union = np.concatenate((box_union.min(1)[:,:2], box_union.max(1)[:,2:]), 1)
+
+            inds = bbox_overlaps(gt_box_union[None], box_union)[0] >= iou_thres
+
+        else:
+            sub_iou = bbox_overlaps(gt_box[None,:4], boxes[:, :4])[0]
+            obj_iou = bbox_overlaps(gt_box[None,4:], boxes[:, 4:])[0]
+
+            inds = (sub_iou >= iou_thres) & (obj_iou >= iou_thres)
+
+        for i in np.where(keep_inds)[0][inds]:
+            pred_to_gt[i].append(int(gt_ind))
+
+    return pred_to_gt
+
+def _compute_bi_pred_matches(gt_triplets, pred_triplets, pred_triplet_scores,
+                 gt_boxes, pred_boxes, iou_thres, top_k, phrdet=False):
+
+    num_gt = gt_triplets.shape[0]
+    num_pred = pred_triplets.shape[0]
+
+    # pred bi_rel_idxs
+    all_pred_h2t = np.concatenate([pred_triplets[:,0].reshape(-1,1), pred_triplets[:,2].reshape(-1,1)], axis=1)
+    all_pred_h2t = np.tile(all_pred_h2t, (num_pred,1,1)).reshape(-1,2)
+    all_pred_t2h = np.concatenate([pred_triplets[:,2].reshape(-1,1), pred_triplets[:,0].reshape(-1,1)], axis=1)
+    all_pred_t2h = np.tile(all_pred_t2h, (1,num_pred)).reshape(-1,2)
+    pred_bi_pairs = (np.equal(all_pred_h2t, all_pred_t2h)).all(1)
+    pred_bi_pairs = pred_bi_pairs.reshape(num_pred, num_pred)
+    pred_head2tail_idx, pred_tail2head_idx = np.nonzero(np.triu(pred_bi_pairs))
+    num_bi_pred = len(pred_head2tail_idx)
+
+    sorted_idxs = np.argsort(-(pred_triplet_scores[pred_head2tail_idx, 1] + pred_triplet_scores[pred_tail2head_idx, 1]))
+    pred_head2tail_idx = pred_head2tail_idx[sorted_idxs]
+    pred_tail2head_idx = pred_tail2head_idx[sorted_idxs]
+
+    pred_head2tail = pred_triplets[pred_head2tail_idx]
+    pred_tail2head = pred_triplets[pred_tail2head_idx]
+
+    # gt bi_rel_idxs
+    all_gt_h2t = np.concatenate([gt_triplets[:,0].reshape(-1,1), gt_triplets[:,2].reshape(-1,1)], axis=1)
+    all_gt_h2t = np.tile(all_gt_h2t, (num_gt,1,1)).reshape(-1,2)
+    all_gt_t2h = np.concatenate([gt_triplets[:,2].reshape(-1,1), gt_triplets[:,0].reshape(-1,1)], axis=1)
+    all_gt_t2h = np.tile(all_gt_t2h, (1,num_gt)).reshape(-1,2)
+    gt_bi_pairs = (np.equal(all_gt_h2t, all_gt_t2h)).all(1)
+    gt_bi_pairs = gt_bi_pairs.reshape(num_gt, num_gt)
+    gt_head2tail_idx, gt_tail2head_idx = np.nonzero(np.triu(gt_bi_pairs))
+    num_bi_gt = len(gt_head2tail_idx)
+
+    gt_head2tail = gt_triplets[gt_head2tail_idx]
+    gt_tail2head = gt_triplets[gt_tail2head_idx]
+
+    correct = [0 for _ in range(num_bi_pred)]
+    for i, (pred_h2t, pred_t2h) in enumerate(zip(pred_head2tail, pred_tail2head)):
+        h2t_match_idxs = np.nonzero((np.tile(pred_h2t, (num_bi_gt, 1)) == gt_head2tail).all(1))[0]
+        t2h_match_idxs = np.nonzero((np.tile(pred_t2h, (num_bi_gt, 1)) == gt_tail2head).all(1))[0]
+
+        for h2t_match_idx, t2h_match_idx in zip(h2t_match_idxs, t2h_match_idxs):
+            h2t_sub_iou = bbox_overlaps(pred_boxes[pred_head2tail_idx[i], :4].reshape(-1, 4),
+                                        gt_boxes[gt_head2tail_idx[h2t_match_idx], :4].reshape(-1, 4))[0]
+            h2t_obj_iou = bbox_overlaps(pred_boxes[pred_head2tail_idx[i], 4:].reshape(-1, 4),
+                                        gt_boxes[gt_head2tail_idx[h2t_match_idx], 4:].reshape(-1, 4))[0]
+
+            t2h_sub_iou = bbox_overlaps(pred_boxes[pred_tail2head_idx[i], :4].reshape(-1, 4),
+                                        gt_boxes[gt_tail2head_idx[t2h_match_idx], :4].reshape(-1, 4))[0]
+            t2h_obj_iou = bbox_overlaps(pred_boxes[pred_tail2head_idx[i], 4:].reshape(-1, 4),
+                                        gt_boxes[gt_tail2head_idx[t2h_match_idx], 4:].reshape(-1, 4))[0]
+
+            if ((h2t_sub_iou >= iou_thres) & (h2t_obj_iou >= iou_thres)) & \
+                ((t2h_sub_iou >= iou_thres) & (t2h_obj_iou >= iou_thres)):
+                correct[i] += 1
+
+    recall_k = [sum(correct[:k])/num_bi_gt for k in top_k]
+    return recall_k

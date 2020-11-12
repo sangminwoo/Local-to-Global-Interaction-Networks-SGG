@@ -54,6 +54,7 @@ class RelationFeatureExtractor(nn.Module):
         assert not(self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING),\
             "pool_sbj_obj and masking should not be used at once!"
         self.use_sbj_obj = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING 
+        self.use_semantic = self.cfg.MODEL.ROI_RELATION_HEAD.USE_SEMANTIC
         # union rectangle size
         self.rect_size = self.resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" \
         and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else self.resolution * 4 -1
@@ -101,24 +102,26 @@ class RelationFeatureExtractor(nn.Module):
             union_proposal = boxlist_union(head_proposal, tail_proposal)
             union_proposals.append(union_proposal)
 
-            if self.mode == 'predcls':
-                head_labels = proposal[rel_pair_idx[:, 0]].get_field("labels")
-                head_logit = to_onehot(head_labels, self.obj_classes)
-                tail_labels = proposal[rel_pair_idx[:, 1]].get_field("labels")
-                tail_logit = to_onehot(tail_labels, self.obj_classes)
-            else:
-                head_logit = torch.cat([proposal[rel_pair_idx[:, 0]].get_field("predict_logits") for proposal in proposals], 0)
-                tail_logit = torch.cat([proposal[rel_pair_idx[:, 1]].get_field("predict_logits") for proposal in proposals], 0)
+            if self.use_semantic:
+                if self.mode == 'predcls':
+                    head_labels = proposal[rel_pair_idx[:, 0]].get_field("labels")
+                    head_logit = to_onehot(head_labels, self.obj_classes)
+                    tail_labels = proposal[rel_pair_idx[:, 1]].get_field("labels")
+                    tail_logit = to_onehot(tail_labels, self.obj_classes)
+                else:
+                    head_logit = torch.cat([proposal[rel_pair_idx[:, 0]].get_field("predict_logits") for proposal in proposals], 0)
+                    tail_logit = torch.cat([proposal[rel_pair_idx[:, 1]].get_field("predict_logits") for proposal in proposals], 0)
 
-            union_logit = head_logit + tail_logit
-            union_logits.append(union_logit)
+                union_logit = head_logit + tail_logit
+                union_logits.append(union_logit)
 
             if self.use_sbj_obj:
                 head_proposals.append(head_proposal)
                 tail_proposals.append(tail_proposal)
 
-                head_logits.append(head_logit)
-                tail_logits.append(tail_logit)
+                if self.use_semantic:
+                    head_logits.append(head_logit)
+                    tail_logits.append(tail_logit)
 
             # use range to construct rectangle, sized (rect_size, rect_size)
             num_rel = len(rel_pair_idx)
@@ -151,16 +154,18 @@ class RelationFeatureExtractor(nn.Module):
                 union_rect_input = torch.stack((head_rect, tail_rect), dim=1) # (num_rel, 2, rect_size, rect_size)
                 union_rect_inputs.append(union_rect_input)
      
-        union_logits = torch.cat(union_logits, dim=0) # Nx151
-        if self.use_sbj_obj:
-            head_logits = torch.cat(head_logits, dim=0) # Nx151
-            tail_logits = torch.cat(tail_logits, dim=0) # Nx151
+        if self.use_semantic:
+            union_logits = torch.cat(union_logits, dim=0) # Nx151
+            if self.use_sbj_obj:
+                head_logits = torch.cat(head_logits, dim=0) # Nx151
+                tail_logits = torch.cat(tail_logits, dim=0) # Nx151
 
         # rectangle feature. size (total_num_rel, in_channels, POOLER_RESOLUTION, POOLER_RESOLUTION)
         union_rect_inputs = torch.cat(union_rect_inputs, dim=0)
         union_rect_features = self.rect_conv(union_rect_inputs)
-        union_logit_inputs = union_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution) # Nx151x1x1 -> Nx151x7x7
-        union_logit_features = self.logit_conv(union_logit_inputs) # Nx151x7x7
+        if self.use_semantic:
+            union_logit_inputs = union_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution) # Nx151x1x1 -> Nx151x7x7
+            union_logit_features = self.logit_conv(union_logit_inputs) # Nx151x7x7
 
         if self.use_sbj_obj:
             head_rect_inputs = torch.cat(head_rect_inputs, dim=0)
@@ -168,10 +173,11 @@ class RelationFeatureExtractor(nn.Module):
             head_rect_features = self.rect_conv(head_rect_inputs)
             tail_rect_features = self.rect_conv(tail_rect_inputs)
             
-            head_logit_inputs = head_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
-            tail_logit_inputs = tail_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
-            head_logit_features = self.logit_conv(head_logit_inputs) # Nx151x7x7
-            tail_logit_features = self.logit_conv(tail_logit_inputs) # Nx151x7x7
+            if self.use_semantic:
+                head_logit_inputs = head_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
+                tail_logit_inputs = tail_logits.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, self.resolution, self.resolution)
+                head_logit_features = self.logit_conv(head_logit_inputs) # Nx151x7x7
+                tail_logit_features = self.logit_conv(tail_logit_inputs) # Nx151x7x7
 
         if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
             if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ:
@@ -180,9 +186,14 @@ class RelationFeatureExtractor(nn.Module):
                 tail_features = self.feature_extractor.pooler(x, tail_proposals)
 
                 # add spatial & semantics 
-                union_features = union_features + union_rect_features + union_logit_features
-                head_features = head_features + head_rect_features + head_logit_features
-                tail_features = tail_features + tail_rect_features + tail_logit_features
+                union_features = union_features + union_rect_features
+                head_features = head_features + head_rect_features
+                tail_features = tail_features + tail_rect_features
+
+                if self.use_semantic:
+                    union_features += union_logit_features
+                    head_features += head_logit_features
+                    tail_features += tail_logit_features
 
                 return head_features, tail_features, union_features
 

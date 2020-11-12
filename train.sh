@@ -46,26 +46,27 @@ test_img_per_batch=1
 dtype="float16"
 max_iter=100000
 val_period=5000
-checkpoint_period=5000
+checkpoint_period=50000
 random_seed=0
 
 # preset
-use_bias=True # True, False
+use_bias=False # True, False
 pool_sbj_obj=True # True, False
 use_masking=False # True, False
+use_semantic=False # True, False
 # cut
 use_cut=False #True, False
 relevance_dim=256
 num_pair_proposals=256
 # split
-reduce_dim=True # True, False
+reduce_dim=False # True, False
 use_att=True # True, False
 att_all=True # True, False
 att_type='non_local' # awa, cbam, self_att, non_local
 flatten=True # True, False
 # interact
 use_gin=True # True, False
-gin_layers=4 # 1, 2, 4
+gin_layers=1 # 1, 2, 4
 edge2edge=False # True, False
 graph_interact_module='gcn' # gcn, gat, again, self_att
 
@@ -115,6 +116,7 @@ else
 		SOLVER.PRE_VAL ${pre_val} \
 		MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 		MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
+		MODEL.ROI_RELATION_HEAD.USE_SEMANTIC ${use_semantic} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 		MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS  ${num_pair_proposals} \
@@ -150,6 +152,7 @@ else
 		SOLVER.PRE_VAL ${pre_val} \
 		MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 		MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
+		MODEL.ROI_RELATION_HEAD.USE_SEMANTIC ${use_semantic} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT ${use_cut} \
 		MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM  ${relevance_dim} \
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS  ${num_pair_proposals} \

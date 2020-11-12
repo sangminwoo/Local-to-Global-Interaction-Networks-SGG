@@ -12,7 +12,7 @@ from maskrcnn_benchmark.data import get_dataset_statistics
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_iou
 from maskrcnn_benchmark.utils.miscellaneous import intersect_2d, argsort_desc, bbox_overlaps
-from maskrcnn_benchmark.data.datasets.evaluation.vg.sgg_eval import SGRecall, SGNoGraphConstraintRecall, SGZeroShotRecall, SGNGZeroShotRecall, SGPairAccuracy, SGMeanRecall, SGNGMeanRecall, SGAccumulateRecall
+from maskrcnn_benchmark.data.datasets.evaluation.vg.sgg_eval import SGBiRecall, SGRecall, SGNoGraphConstraintRecall, SGZeroShotRecall, SGNGZeroShotRecall, SGPairAccuracy, SGMeanRecall, SGNGMeanRecall, SGAccumulateRecall
 
 def do_vg_evaluation(
     cfg,
@@ -31,7 +31,10 @@ def do_vg_evaluation(
     # mode = cfg.TEST.RELATION.EVAL_MODE
     if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
         if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL:
-            mode = 'predcls'
+            if cfg.DATASETS.BI_REL_DET:
+                mode = 'brcls'
+            else:
+                mode = 'predcls'
         else:
             mode = 'sgcls'
     else:
@@ -40,7 +43,7 @@ def do_vg_evaluation(
     num_rel_category = cfg.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
     multiple_preds = cfg.TEST.RELATION.MULTIPLE_PREDS
     iou_thres = cfg.TEST.RELATION.IOU_THRESHOLD
-    assert mode in {'predcls', 'sgdet', 'sgcls', 'phrdet', 'preddet'}
+    assert mode in {'brcls', 'predcls', 'sgdet', 'sgcls', 'phrdet', 'preddet'}
 
     groundtruths = []
     for image_id, prediction in enumerate(predictions):
@@ -150,6 +153,11 @@ def do_vg_evaluation(
         eval_ng_mean_recall.register_container(mode)
         evaluator['eval_ng_mean_recall'] = eval_ng_mean_recall
 
+        # bi Recall@K
+        eval_bi_recall = SGBiRecall(result_dict)
+        eval_bi_recall.register_container(mode)
+        evaluator['eval_bi_recall'] = eval_bi_recall
+
         # prepare all inputs
         global_container = {}
         global_container['zeroshot_triplet'] = zeroshot_triplet
@@ -175,6 +183,7 @@ def do_vg_evaluation(
         result_str += eval_ng_zeroshot_recall.generate_print_string(mode)
         result_str += eval_mean_recall.generate_print_string(mode)
         result_str += eval_ng_mean_recall.generate_print_string(mode)
+        result_str += eval_bi_recall.generate_print_string(mode)
         
         if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
             result_str += eval_pair_accuracy.generate_print_string(mode)
@@ -261,7 +270,7 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
     evaluator['eval_zeroshot_recall'].prepare_zeroshot(global_container, local_container)
     evaluator['eval_ng_zeroshot_recall'].prepare_zeroshot(global_container, local_container)
 
-    if mode == 'predcls':
+    if mode in ['predcls', 'brcls']:
         local_container['pred_boxes'] = local_container['gt_boxes']
         local_container['pred_classes'] = local_container['gt_classes']
         local_container['obj_scores'] = np.ones(local_container['gt_classes'].shape[0])
@@ -316,6 +325,8 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
     evaluator['eval_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
     # No Graph Constraint Zero-Shot Recall
     evaluator['eval_ng_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
+    # Bi Recall
+    evaluator['eval_bi_recall'].calculate_recall(global_container, local_container, mode)
 
     return 
 
