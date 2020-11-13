@@ -34,11 +34,11 @@ if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 	config="configs/e2e_relation_detector_VGG16_1x.yaml"
 else
 	run="tools/relation_train_net.py"
-	config="configs/e2e_relation_VGG16_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
+	config="configs/e2e_relation_X_101_32_8_FPN_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
 fi
-detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
+detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
 predictor="CSIPredictor"
-backbone="VGG-16"
+backbone="R-101-FPN" # VGG-16, R-101-FPN
 pre_val=False
 resolution=7
 train_img_per_batch=1
@@ -60,15 +60,19 @@ relevance_dim=256
 num_pair_proposals=256
 # split
 reduce_dim=False # True, False
-use_att=True # True, False
-att_all=True # True, False
+use_att=False # True, False
+att_all=False # True, False
 att_type='non_local' # awa, cbam, self_att, non_local
 flatten=True # True, False
+compose_type='half_permute' # no_permute, half_permute, full_permute
 # interact
-use_gin=True # True, False
+use_gin=False # True, False
 gin_layers=1 # 1, 2, 4
 edge2edge=False # True, False
 graph_interact_module='gcn' # gcn, gat, again, self_att
+# repulsive loss
+use_repulsive_loss=True # True, False
+margin=100. # 10., 100., 1000.
 
 if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 	if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
@@ -126,10 +130,13 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE ${att_all} \
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
+		MODEL.ROI_RELATION_HEAD.CSINET.COMPOSE_TYPE ${compose_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
+		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
 		TEST.IMS_PER_BATCH ${test_img_per_batch} \
 		DTYPE ${dtype} \
@@ -162,10 +169,13 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE ${att_all} \
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE  ${att_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN ${flatten} \
+		MODEL.ROI_RELATION_HEAD.CSINET.COMPOSE_TYPE ${compose_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN ${use_gin} \
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
+		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
 		TEST.IMS_PER_BATCH ${test_img_per_batch} \
 		DTYPE ${dtype} \

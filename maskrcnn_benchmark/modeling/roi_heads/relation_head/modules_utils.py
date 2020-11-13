@@ -65,6 +65,15 @@ class RelationalEmbedding(nn.Module):
             nn.Linear(hid_dim, out_dim)
         )
 
+    def forward_no_permute(self, subj, obj, bg):
+        sob = torch.cat((subj, obj, bg), dim=1) # NxD*3
+
+        rel_sob = self.rel_embedding(sob) # NxD*3 -> NxO
+
+        rel_emb = rel_sob
+
+        return rel_emb # NxO
+
     def forward(self, subj, obj, bg):
         sob = torch.cat((subj, obj, bg), dim=1) # NxD*3
         sbo = torch.cat((subj, bg, obj), dim=1) # NxD*3
@@ -75,6 +84,25 @@ class RelationalEmbedding(nn.Module):
         rel_bso = self.rel_embedding(bso) # NxD*3 -> NxO
 
         rel_emb = rel_sob + rel_sbo + rel_bso # NxO
+
+        return rel_emb # NxO
+
+    def forward_full_permute(self, subj, obj, bg):
+        sob = torch.cat((subj, obj, bg), dim=1) # NxD*3
+        sbo = torch.cat((subj, bg, obj), dim=1) # NxD*3
+        bso = torch.cat((bg, subj, obj), dim=1) # NxD*3
+        osb = torch.cat((obj, subj, bg), dim=1) # NxD*3
+        obs = torch.cat((obj, bg, subj), dim=1) # NxD*3
+        bos = torch.cat((bg, obj, subj), dim=1) # NxD*3
+
+        rel_sob = self.rel_embedding(sob) # NxD*3 -> NxO
+        rel_sbo = self.rel_embedding(sbo) # NxD*3 -> NxO
+        rel_bso = self.rel_embedding(bso) # NxD*3 -> NxO
+        rel_osb = self.rel_embedding(osb) # NxD*3 -> NxO
+        rel_obs = self.rel_embedding(obs) # NxD*3 -> NxO
+        rel_bos = self.rel_embedding(bos) # NxD*3 -> NxO
+
+        rel_emb = rel_sob + rel_sbo + rel_bso + rel_osb + rel_obs + rel_bos # NxO
 
         return rel_emb # NxO
 

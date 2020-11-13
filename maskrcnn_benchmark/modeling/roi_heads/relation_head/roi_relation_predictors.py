@@ -54,7 +54,7 @@ class CSIPredictor(nn.Module):
         #     rel_features = rel_feats
 
         # encode context infomation
-        obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+        obj_dists, rel_dists, repulsive_loss = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
@@ -77,6 +77,7 @@ class CSIPredictor(nn.Module):
         # we use obj_preds instead of pred from obj_dists
         # because in decoder_rnn, preds has been through a nms stage
         add_losses = {}
+        add_losses['repulsive_loss'] = repulsive_loss
 
         return obj_dists, rel_dists, add_losses
 

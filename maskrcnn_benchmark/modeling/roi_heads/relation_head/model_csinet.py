@@ -133,6 +133,16 @@ class CSINet(nn.Module):
             out.append(self.avgpool(inst).squeeze())
         return out
 
+    def _compose(self, rel_features, compose_type='half_permute'):
+        assert compose_type in ['no_permute', 'half_permute', 'full_permute']
+        if compose_type == 'no_permute':
+            out = self.compose.forward_no_permute(*rel_features)
+        elif compose_type == 'half_permute':
+            out = self.compose(*rel_features)
+        elif compose_type == 'full_permute':
+            out = self.compose.forward_full_permute(*rel_features)
+        return out
+
     def forward(self, roi_features, proposals, rel_features, rel_pair_idxs, logger=None):
         '''
         roi_features: tensor(20x4096) (where, 20=9+11)
@@ -171,7 +181,7 @@ class CSINet(nn.Module):
 
         # 3. compose
         if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING:
-            rel_features = self.compose(*rel_features)
+            rel_features = self._compose(rel_features, compose_type=self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.COMPOSE_TYPE)
         else:
             assert len(rel_features) == 1, "using union feature only"
             rel_features = rel_features[0]
@@ -196,4 +206,29 @@ class CSINet(nn.Module):
 
         rel_dists = self.rel_predictor(rel_features) # mx50
 
-        return obj_dists, rel_dists
+        # repulsive loss
+        repulsive_loss = 0
+        
+        if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS:
+            for rel_pair_idx in rel_pair_idxs:
+                num_rels = rel_pair_idx.shape[0]
+
+                # bi_rel_idxs
+                all_rel_h2t = rel_pair_idx.repeat(num_rels,1)
+                rel_pair_idx_rev = torch.cat([rel_pair_idx[:,1].view(-1,1), rel_pair_idx[:,0].view(-1,1)], dim=1)
+                all_rel_t2h = rel_pair_idx_rev.repeat_interleave(num_rels,0)
+                rel_bi_pairs = (all_rel_h2t == all_rel_t2h).all(1)
+                rel_bi_pairs = rel_bi_pairs.view(num_rels, num_rels)
+                bi_rel_idxs = torch.nonzero(torch.triu(rel_bi_pairs))
+                num_bi_rels = len(bi_rel_idxs)
+
+                if num_bi_rels > 0:
+                    bi_rels = rel_pair_idx[bi_rel_idxs[:, 0]]
+                    bi_rel_dists = rel_dists[bi_rels] # num_bi_rels x 2 x dim
+
+                    pdist = F.pairwise_distance(bi_rel_dists[:,0,:], bi_rel_dists[:,1,:], p=2)
+                    margin = torch.tensor(self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.MARGIN, device=pdist.device)
+                    min_loss = torch.tensor(0., device=pdist.device)
+                    repulsive_loss += torch.max(min_loss, margin-pdist)[0]
+
+        return obj_dists, rel_dists, repulsive_loss

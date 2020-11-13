@@ -365,6 +365,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'non-local' # cbam, self_att, non-local
 # whether flatten features
 _C.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN = False # True
+# type of permutation
+_C.MODEL.ROI_RELATION_HEAD.CSINET.COMPOSE_TYPE = 'half_permute' # no_permute, half_permute, full_permute
 # use graph interaction network or not
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN = True
 # number of gin layers
@@ -373,6 +375,10 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS = 1
 _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 # type of graph interact module
 _C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
+# use repulsive loss for the opposite direction relationships
+_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS = True # False
+# margin
+_C.MODEL.ROI_RELATION_HEAD.CSINET.MARGIN = 10. # 10., 100., 1000.
 
 
 _C.MODEL.VGG = CN()
