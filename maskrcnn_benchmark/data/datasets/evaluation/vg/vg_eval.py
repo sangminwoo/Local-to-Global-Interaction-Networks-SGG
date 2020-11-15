@@ -154,9 +154,10 @@ def do_vg_evaluation(
         evaluator['eval_ng_mean_recall'] = eval_ng_mean_recall
 
         # bi Recall@K
-        eval_bi_recall = SGBiRecall(result_dict)
-        eval_bi_recall.register_container(mode)
-        evaluator['eval_bi_recall'] = eval_bi_recall
+        if cfg.DATASETS.BI_REL_DET:
+            eval_bi_recall = SGBiRecall(result_dict)
+            eval_bi_recall.register_container(mode)
+            evaluator['eval_bi_recall'] = eval_bi_recall
 
         # prepare all inputs
         global_container = {}
@@ -170,7 +171,7 @@ def do_vg_evaluation(
         global_container['num_attributes'] = num_attributes
         
         for groundtruth, prediction in zip(groundtruths, predictions):
-            evaluate_relation_of_one_image(groundtruth, prediction, global_container, evaluator)
+            evaluate_relation_of_one_image(cfg, groundtruth, prediction, global_container, evaluator)
         
         # calculate mean recall
         eval_mean_recall.calculate_mean_recall(mode)
@@ -183,7 +184,8 @@ def do_vg_evaluation(
         result_str += eval_ng_zeroshot_recall.generate_print_string(mode)
         result_str += eval_mean_recall.generate_print_string(mode)
         result_str += eval_ng_mean_recall.generate_print_string(mode)
-        result_str += eval_bi_recall.generate_print_string(mode)
+        if cfg.DATASETS.BI_REL_DET:
+            result_str += eval_bi_recall.generate_print_string(mode)
         
         if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
             result_str += eval_pair_accuracy.generate_print_string(mode)
@@ -230,7 +232,7 @@ def save_output(output_folder, groundtruths, predictions, dataset):
 
 
 
-def evaluate_relation_of_one_image(groundtruth, prediction, global_container, evaluator):
+def evaluate_relation_of_one_image(cfg, groundtruth, prediction, global_container, evaluator):
     """
     Returns:
         pred_to_gt: Matching from predicate to GT
@@ -326,7 +328,8 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
     # No Graph Constraint Zero-Shot Recall
     evaluator['eval_ng_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
     # Bi Recall
-    evaluator['eval_bi_recall'].calculate_recall(global_container, local_container, mode)
+    if cfg.DATASETS.BI_REL_DET:
+        evaluator['eval_bi_recall'].calculate_recall(global_container, local_container, mode)
 
     return 
 

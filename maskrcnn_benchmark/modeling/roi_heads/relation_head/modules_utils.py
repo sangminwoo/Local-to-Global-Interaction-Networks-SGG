@@ -4,6 +4,34 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class Anchor:
+    def __init__(self):
+        super(Anchor, self).__init__()
+        self.anchor = {}
+        self.num_of_embs = {}
+
+    def __getitem__(self, key):
+        key = int(key.detach().to('cpu'))
+        assert key in list(self.anchor.keys()), f'available keys: {list(self.anchor.keys())}'
+
+        return self.anchor[key]
+
+    def update(self, key, pos, neg):
+        key = int(key.detach().to('cpu'))
+        pos = pos.detach().to(device='cpu', dtype=torch.float32)
+        neg = neg.detach().to(device='cpu', dtype=torch.float32)
+
+        if key not in list(self.anchor.keys()):
+            self.anchor[key] = 0.
+            self.num_of_embs[key] = 0
+
+        num_prev = self.num_of_embs[key]
+        a_prev = self.anchor[key]
+        a_cur = (a_prev * num_prev + pos - neg) / (num_prev + 2)
+        
+        self.anchor[key] = a_cur
+        self.num_of_embs[key] = num_prev + 2
+
 ############### Split (Coord-Conv) ################
 class AddCoordinates:
     def __init__(self, with_r=False):

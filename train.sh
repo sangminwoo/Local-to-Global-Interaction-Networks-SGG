@@ -36,7 +36,7 @@ else
 	run="tools/relation_train_net.py"
 	config="configs/e2e_relation_X_101_32_8_FPN_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
 fi
-detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
+detector_checkpoint="/home/t1_u1/sangmin/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
 predictor="CSIPredictor"
 backbone="R-101-FPN" # VGG-16, R-101-FPN
 pre_val=False
@@ -50,7 +50,7 @@ checkpoint_period=50000
 random_seed=0
 
 # preset
-use_bias=False # True, False
+use_bias=True # True, False
 pool_sbj_obj=True # True, False
 use_masking=False # True, False
 use_semantic=False # True, False
@@ -60,19 +60,20 @@ relevance_dim=256
 num_pair_proposals=256
 # split
 reduce_dim=False # True, False
-use_att=False # True, False
-att_all=False # True, False
+use_att=True # True, False
+att_all=True # True, False
 att_type='non_local' # awa, cbam, self_att, non_local
 flatten=True # True, False
 compose_type='half_permute' # no_permute, half_permute, full_permute
 # interact
-use_gin=False # True, False
-gin_layers=1 # 1, 2, 4
+use_gin=True # True, False
+gin_layers=4 # 1, 2, 4
 edge2edge=False # True, False
 graph_interact_module='gcn' # gcn, gat, again, self_att
 # repulsive loss
-use_repulsive_loss=True # True, False
-margin=100. # 10., 100., 1000.
+use_att_rep_loss=True # True, False
+use_repulsive_loss=False # True, False
+margin=1000. # 10., 100., 1000.
 
 if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 	if [ ${#num_gpu} > 1 ] ; then # multi-gpu training
@@ -135,6 +136,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
+		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
@@ -174,6 +176,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS ${gin_layers} \
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
+		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
