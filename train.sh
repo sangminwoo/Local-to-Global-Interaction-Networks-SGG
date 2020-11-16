@@ -34,11 +34,11 @@ if [ "${mode}" == "detector" ] || [ "${mode}" == 4 ] ; then
 	config="configs/e2e_relation_detector_VGG16_1x.yaml"
 else
 	run="tools/relation_train_net.py"
-	config="configs/e2e_relation_X_101_32_8_FPN_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
+	config="configs/e2e_relation_VGG16_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
 fi
-detector_checkpoint="/home/t1_u1/sangmin/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
+detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
 predictor="CSIPredictor"
-backbone="R-101-FPN" # VGG-16, R-101-FPN
+backbone="VGG-16" # VGG-16, R-101-FPN
 pre_val=False
 resolution=7
 train_img_per_batch=1
@@ -72,6 +72,7 @@ edge2edge=False # True, False
 graph_interact_module='gcn' # gcn, gat, again, self_att
 # repulsive loss
 use_att_rep_loss=True # True, False
+att_rep_loss_type='cos' # l1, l2, cos
 use_repulsive_loss=False # True, False
 margin=1000. # 10., 100., 1000.
 
@@ -137,6 +138,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE ${att_rep_loss_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \
@@ -177,6 +179,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE ${att_rep_loss_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
 		SOLVER.IMS_PER_BATCH ${train_img_per_batch} \

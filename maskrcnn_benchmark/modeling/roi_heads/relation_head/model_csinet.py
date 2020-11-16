@@ -96,6 +96,9 @@ class CSINet(nn.Module):
         self.rel_predictor = nn.Linear(self.dim, self.rel_classes)
 
         self.bi_rel_anchor = Anchor()
+        self.l2_loss = nn.PairwiseDistance(p=2)
+        self.l1_loss = nn.L1Loss()
+        self.cosine_loss = nn.CosineEmbeddingLoss()
 
     def _reduce_dim(self, rel_features):
         out = []
@@ -208,58 +211,68 @@ class CSINet(nn.Module):
 
         rel_dists = self.rel_predictor(rel_features) # mx51
 
-        loss = torch.tensor(0., device=obj_dists.device)
+        
         
         # atrract & repel
-        if self.training:
-            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS:
-                for rel_pair_idx in rel_pair_idxs:
-                    num_rels = rel_pair_idx.shape[0]
+        # if self.training:
+        #     if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_BI_ATT_REP_LOSS:
+        #         for rel_pair_idx in rel_pair_idxs:
+        #             num_rels = rel_pair_idx.shape[0]
 
-                    # bi_rel_idxs
-                    all_rel_h2t = rel_pair_idx.repeat(num_rels,1)
-                    rel_pair_idx_rev = torch.cat([rel_pair_idx[:,1].view(-1,1), rel_pair_idx[:,0].view(-1,1)], dim=1)
-                    all_rel_t2h = rel_pair_idx_rev.repeat_interleave(num_rels,0)
-                    rel_bi_pairs = (all_rel_h2t == all_rel_t2h).all(1)
-                    rel_bi_pairs = rel_bi_pairs.view(num_rels, num_rels)
-                    bi_rel_idxs = torch.nonzero(torch.triu(rel_bi_pairs)) # num_bi_rels x 2 (e.g. [0,1])
-                    num_bi_rels = len(bi_rel_idxs)
+        #             # bi_rel_idxs
+        #             all_rel_h2t = rel_pair_idx.repeat(num_rels,1)
+        #             rel_pair_idx_rev = torch.cat([rel_pair_idx[:,1].view(-1,1), rel_pair_idx[:,0].view(-1,1)], dim=1)
+        #             all_rel_t2h = rel_pair_idx_rev.repeat_interleave(num_rels,0)
+        #             rel_bi_pairs = (all_rel_h2t == all_rel_t2h).all(1)
+        #             rel_bi_pairs = rel_bi_pairs.view(num_rels, num_rels)
+        #             bi_rel_idxs = torch.nonzero(torch.triu(rel_bi_pairs)) # num_bi_rels x 2 (e.g. [0,1])
+        #             num_bi_rels = len(bi_rel_idxs)
 
-                    if num_bi_rels > 0:
-                        bi_rels = rel_pair_idx[bi_rel_idxs[:, 0]] # num_bi_rels x 2 (e.g., [126, 28])
-                        bi_rel_dists = rel_dists[bi_rels] # num_bi_rels x 2 x 51
+        #             if num_bi_rels > 0:
+        #                 bi_rels = rel_pair_idx[bi_rel_idxs[:, 0]] # num_bi_rels x 2 (e.g., [126, 28])
+        #                 bi_rel_dists = rel_dists[bi_rels] # num_bi_rels x 2 x 51
 
-                        bi_rel_preds = bi_rel_dists.max(-1)[1] # num_bi_rels x 2
+        #                 bi_rel_preds = bi_rel_dists.max(-1)[1] # num_bi_rels x 2
 
-                        for (h2t_idx, t2h_idx), (h2t_label, t2h_label) in zip(bi_rels, bi_rel_preds):
-                            self.bi_rel_anchor.update(key=h2t_label, pos=rel_dists[h2t_idx], neg=rel_dists[t2h_idx])
-                            self.bi_rel_anchor.update(key=t2h_label, pos=rel_dists[t2h_idx], neg=rel_dists[h2t_idx])
+        #                 for (h2t_idx, t2h_idx), (h2t_label, t2h_label) in zip(bi_rels, bi_rel_preds):
+        #                     if h2t_label == t2h_label:
+        #                         self.bi_rel_anchor.update(key=h2t_label, pos=rel_dists[h2t_idx], neg=-rel_dists[t2h_idx])
+        #                     else:
+        #                         self.bi_rel_anchor.update(key=h2t_label, pos=rel_dists[h2t_idx], neg=rel_dists[t2h_idx])
+        #                         self.bi_rel_anchor.update(key=t2h_label, pos=rel_dists[t2h_idx], neg=rel_dists[h2t_idx])
 
-                            h2t_loss = torch.sum(F.pairwise_distance(self.bi_rel_anchor[h2t_label].to(rel_dists.device).unsqueeze(0), rel_dists[h2t_idx].unsqueeze(0), p=2))
-                            t2h_loss = torch.sum(F.pairwise_distance(self.bi_rel_anchor[t2h_label].to(rel_dists.device).unsqueeze(0), rel_dists[t2h_idx].unsqueeze(0), p=2))
-                            loss += (h2t_loss + t2h_loss)
+        #                     # h2t_loss = torch.sum(self.l2_loss(self.bi_rel_anchor[h2t_label].to(rel_dists.device).unsqueeze(0), rel_dists[h2t_idx].unsqueeze(0), p=2))
+        #                     # t2h_loss = torch.sum(self.l2_loss(self.bi_rel_anchor[t2h_label].to(rel_dists.device).unsqueeze(0), rel_dists[t2h_idx].unsqueeze(0), p=2))
+
+        #                     # h2t_loss = torch.sum(self.l1_loss(self.bi_rel_anchor[h2t_label].to(rel_dists.device).unsqueeze(0), rel_dists[h2t_idx].unsqueeze(0)))
+        #                     # t2h_loss = torch.sum(self.l1_loss(self.bi_rel_anchor[t2h_label].to(rel_dists.device).unsqueeze(0), rel_dists[t2h_idx].unsqueeze(0)))
+
+        #                     h2t_loss = torch.sum(self.cosine_loss(self.bi_rel_anchor[h2t_label].to(rel_dists.device).unsqueeze(0), rel_dists[h2t_idx].unsqueeze(0), torch.tensor(1, device=rel_dists.device)))
+        #                     t2h_loss = torch.sum(self.cosine_loss(self.bi_rel_anchor[t2h_label].to(rel_dists.device).unsqueeze(0), rel_dists[t2h_idx].unsqueeze(0), torch.tensor(1, device=rel_dists.device)))
+
+        #                     loss += (h2t_loss + t2h_loss)
         
-             # repulsive loss
-            if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS:
-                for rel_pair_idx in rel_pair_idxs:
-                    num_rels = rel_pair_idx.shape[0]
+        #      # repulsive loss 
+        #     if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS:
+        #         for rel_pair_idx in rel_pair_idxs:
+        #             num_rels = rel_pair_idx.shape[0]
 
-                    # bi_rel_idxs
-                    all_rel_h2t = rel_pair_idx.repeat(num_rels,1)
-                    rel_pair_idx_rev = torch.cat([rel_pair_idx[:,1].view(-1,1), rel_pair_idx[:,0].view(-1,1)], dim=1)
-                    all_rel_t2h = rel_pair_idx_rev.repeat_interleave(num_rels,0)
-                    rel_bi_pairs = (all_rel_h2t == all_rel_t2h).all(1)
-                    rel_bi_pairs = rel_bi_pairs.view(num_rels, num_rels)
-                    bi_rel_idxs = torch.nonzero(torch.triu(rel_bi_pairs))
-                    num_bi_rels = len(bi_rel_idxs)
+        #             # bi_rel_idxs
+        #             all_rel_h2t = rel_pair_idx.repeat(num_rels,1)
+        #             rel_pair_idx_rev = torch.cat([rel_pair_idx[:,1].view(-1,1), rel_pair_idx[:,0].view(-1,1)], dim=1)
+        #             all_rel_t2h = rel_pair_idx_rev.repeat_interleave(num_rels,0)
+        #             rel_bi_pairs = (all_rel_h2t == all_rel_t2h).all(1)
+        #             rel_bi_pairs = rel_bi_pairs.view(num_rels, num_rels)
+        #             bi_rel_idxs = torch.nonzero(torch.triu(rel_bi_pairs))
+        #             num_bi_rels = len(bi_rel_idxs)
 
-                    if num_bi_rels > 0:
-                        bi_rels = rel_pair_idx[bi_rel_idxs[:, 0]]
-                        bi_rel_dists = rel_dists[bi_rels] # num_bi_rels x 2 x dim
+        #             if num_bi_rels > 0:
+        #                 bi_rels = rel_pair_idx[bi_rel_idxs[:, 0]]
+        #                 bi_rel_dists = rel_dists[bi_rels] # num_bi_rels x 2 x dim
 
-                        pdist = F.pairwise_distance(bi_rel_dists[:,0,:], bi_rel_dists[:,1,:], p=2)
-                        margin = torch.tensor(self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.MARGIN, device=pdist.device)
-                        min_loss = torch.tensor(0., device=pdist.device)
-                        loss += torch.max(min_loss, margin-pdist)[0]
+        #                 pdist = F.pairwise_distance(bi_rel_dists[:,0,:], bi_rel_dists[:,1,:], p=2)
+        #                 margin = torch.tensor(self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.MARGIN, device=pdist.device)
+        #                 min_loss = torch.tensor(0., device=pdist.device)
+        #                 loss += torch.max(min_loss, margin-pdist)[0]
 
-        return obj_dists, rel_dists, loss
+        return obj_dists, rel_dists #, loss

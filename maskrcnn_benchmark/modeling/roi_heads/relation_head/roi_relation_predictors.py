@@ -17,6 +17,7 @@ from .model_transformer import TransformerContext
 from .model_csinet import CSINet
 from .utils_relation import layer_init, get_box_info, get_box_pair_info
 from maskrcnn_benchmark.data import get_dataset_statistics
+from .modules_utils import Anchor
 
 @registry.ROI_RELATION_PREDICTOR.register("CSIPredictor")
 class CSIPredictor(nn.Module):
@@ -46,6 +47,15 @@ class CSIPredictor(nn.Module):
             statistics = get_dataset_statistics(config)
             self.freq_bias = FrequencyBias(config, statistics)
 
+        self.use_att_repel_loss = config.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS
+        self.anchor = Anchor()
+        if config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "l1":
+            self.att_repel_loss = nn.L1Loss()
+        elif config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "l2":
+            self.att_repel_loss = nn.PairwiseDistance(p=2)
+        elif config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "cos":
+            self.att_repel_loss = nn.CosineEmbeddingLoss()
+
     def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, rel_features, logger=None):
         # if self.union_single_not_match:
         #     rel_feats = []
@@ -54,7 +64,7 @@ class CSIPredictor(nn.Module):
         #     rel_features = rel_feats
 
         # encode context infomation
-        obj_dists, rel_dists, repulsive_loss = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+        obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
@@ -71,13 +81,39 @@ class CSIPredictor(nn.Module):
 
             rel_dists = rel_dists + self.freq_bias.index_with_labels(pair_pred.long())
 
+        add_losses = {}
+        if self.training:
+            if self.use_att_repel_loss:
+                att_repel_loss = torch.tensor(0., device=rel_dists.device)
+
+                num_rels = rel_dists.shape[0] 
+                rel_preds = rel_dists.max(-1)[1] # num_rels (e.g., tensor([40, 5, 15, ...]))
+                rel_labels = torch.cat(rel_labels, 0) # num_rels
+
+                matched_idx = torch.where(rel_preds == rel_labels)[0]
+                matched_preds = rel_preds[matched_idx]
+                unique_matches = torch.unique(matched_preds)
+
+                for unique_match in unique_matches:
+                    positive_idxs = matched_idx[unique_match == matched_preds]
+                    negative_idxs = matched_idx[unique_match != matched_preds]
+
+                    positive_logits = rel_dists[positive_idxs]
+                    negative_logits = rel_dists[negative_idxs]
+
+                    self.anchor.update(key=unique_match, pos=positive_logits, neg=negative_logits)
+
+                    att_repel_loss += torch.sum(
+                                        self.att_repel_loss(
+                                            self.anchor[unique_match].to(rel_dists.device).unsqueeze(0),
+                                            rel_dists[positive_idxs].unsqueeze(0),
+                                            torch.tensor(1, device=rel_dists.device)
+                                        )
+                                    )
+                add_losses["att_repel_loss"] = att_repel_loss
+
         obj_dists = obj_dists.split(num_objs, dim=0)
         rel_dists = rel_dists.split(num_rels, dim=0)
-        
-        # we use obj_preds instead of pred from obj_dists
-        # because in decoder_rnn, preds has been through a nms stage
-        add_losses = {}
-        add_losses['repulsive_loss'] = repulsive_loss
 
         return obj_dists, rel_dists, add_losses
 

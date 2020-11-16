@@ -26,11 +26,17 @@ class Anchor:
             self.num_of_embs[key] = 0
 
         num_prev = self.num_of_embs[key]
+        num_pos = pos.shape[0]
+        num_neg = neg.shape[0]
         a_prev = self.anchor[key]
-        a_cur = (a_prev * num_prev + pos - neg) / (num_prev + 2)
+        pos_sum = torch.sum(pos, 0)
+        neg_sum = torch.sum(neg, 0)
+
+        # update
+        a_cur = (a_prev * num_prev + pos_sum - neg_sum ) / (num_prev + num_pos + num_neg)
         
         self.anchor[key] = a_cur
-        self.num_of_embs[key] = num_prev + 2
+        self.num_of_embs[key] = num_prev + num_pos + num_neg
 
 ############### Split (Coord-Conv) ################
 class AddCoordinates:

@@ -45,7 +45,6 @@ class RelationLossComputation(object):
         else:
             self.criterion_loss = nn.CrossEntropyLoss()
 
-
     def __call__(self, proposals, rel_labels, relation_logits, refine_logits):
         """
         Computes the loss for relation triplet.
@@ -163,7 +162,6 @@ class FocalLoss(nn.Module):
 
 
 def make_roi_relation_loss_evaluator(cfg):
-
     loss_evaluator = RelationLossComputation(
         cfg.MODEL.ATTRIBUTE_ON,
         cfg.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES,

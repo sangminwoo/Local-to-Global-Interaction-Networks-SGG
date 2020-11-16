@@ -39,7 +39,7 @@ _C.MODEL.CLS_AGNOSTIC_BBOX_REG = False
 _C.MODEL.WEIGHT = ""
 
 # checkpoint of detector, for relation prediction
-_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/t1_u1/sangmin/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
+_C.MODEL.PRETRAINED_DETECTOR_CKPT = "/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/model_final.pth"
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -377,6 +377,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
 # use attract & repulse loss
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS = True # False
+# type of attract & repulse loss
+_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE = 'cos' # l1, l2, cos
 # use repulsive loss for the opposite direction relationships
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS = False # True
 # margin
@@ -624,9 +626,9 @@ _C.TEST.CUSTUM_PATH = '.'
 # ---------------------------------------------------------------------------- #
 # Misc options
 # ---------------------------------------------------------------------------- #
-_C.OUTPUT_DIR = "/home/t1_u1/sangmin/repo/csi-net/checkpoints/motif-precls-exmp"
+_C.OUTPUT_DIR = "/home/t2_u1/repo/csi-net/checkpoints/motif-precls-exmp"
 _C.DETECTED_SGG_DIR = "."
-_C.GLOVE_DIR = "/home/t1_u1/sangmin/data/glove"
+_C.GLOVE_DIR = "/home/t2_u1/data/glove"
 
 _C.PATHS_CATALOG = os.path.join(os.path.dirname(__file__), "paths_catalog.py")
 _C.PATHS_DATA = os.path.join(os.path.dirname(__file__), "../data/datasets")
