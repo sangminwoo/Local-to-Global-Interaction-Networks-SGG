@@ -10,7 +10,7 @@ from .roi_relation_predictors import make_roi_relation_predictor
 from .inference import make_roi_relation_post_processor
 from .loss import make_roi_relation_loss_evaluator
 from .sampling import make_roi_relation_samp_processor
-from .cut import make_relation_pruner
+from .login_cut import make_relation_pruner
 
 class ROIRelationHead(torch.nn.Module):
     """
@@ -36,9 +36,9 @@ class ROIRelationHead(torch.nn.Module):
         self.loss_evaluator = make_roi_relation_loss_evaluator(cfg)
         self.samp_processor = make_roi_relation_samp_processor(cfg)
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
-            relevance_dim = cfg.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM
-            self.num_pair_proposals = cfg.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS
+        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor":
+            relevance_dim = cfg.MODEL.ROI_RELATION_HEAD.LOGIN.RELEVANCE_DIM
+            self.num_pair_proposals = cfg.MODEL.ROI_RELATION_HEAD.LOGIN.NUM_PAIR_PROPOSALS
             self.cut = make_relation_pruner(cfg, embed_dim=relevance_dim)
 
         # parameters
@@ -66,14 +66,14 @@ class ROIRelationHead(torch.nn.Module):
                 else:
                     proposals, rel_labels, rel_pair_idxs, rel_binarys = self.samp_processor.detect_relsample(proposals, targets)
         
-            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
+            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_CUT:
                 rel_labels, rel_pair_idxs, cut_losses = self.cut(proposals, targets, num_pair_proposals=self.num_pair_proposals)
                 
         else:
             rel_labels, rel_binarys = None, None
             rel_pair_idxs = self.samp_processor.prepare_test_pairs(features[0].device, proposals)
 
-            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
+            if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_CUT:
                 rel_pair_idxs = self.cut(proposals, targets, num_pair_proposals=self.num_pair_proposals)
 
         # use box_head to extract features that will be fed to the later predictor processing
@@ -104,7 +104,7 @@ class ROIRelationHead(torch.nn.Module):
         else:
             output_losses = dict(loss_rel=loss_relation, loss_refine_obj=loss_refine)
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT:
+        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor" and self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_CUT:
             add_losses["cut_loss"] = cut_losses
 
         output_losses.update(add_losses)
