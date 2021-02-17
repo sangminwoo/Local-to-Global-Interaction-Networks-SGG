@@ -14,21 +14,22 @@ from .model_vctree import VCTreeLSTMContext
 from .model_motifs import LSTMContext, FrequencyBias
 from .model_motifs_with_attribute import AttributeLSTMContext
 from .model_transformer import TransformerContext
-from .model_csinet import CSINet
+from .model_grcnn import GRCNN
+from .model_login import LOGIN
+
 from .utils_relation import layer_init, get_box_info, get_box_pair_info
 from maskrcnn_benchmark.data import get_dataset_statistics
-from .modules_utils import Anchor
+from .login_utils import Anchor
 
-@registry.ROI_RELATION_PREDICTOR.register("CSIPredictor")
-class CSIPredictor(nn.Module):
+@registry.ROI_RELATION_PREDICTOR.register("LOGINPredictor")
+class LOGINPredictor(nn.Module):
     def __init__(self, config, in_channels):
-        super(CSIPredictor, self).__init__()
-        self.cfg = config
+        super(LOGINPredictor, self).__init__()
         self.use_bias = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS
 
         assert in_channels is not None
 
-        self.csinet = CSINet(config, in_channels)
+        self.login = LOGIN(config, in_channels)
 
         # post decoding
         self.hidden_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_HIDDEN_DIM # 512
@@ -48,13 +49,13 @@ class CSIPredictor(nn.Module):
             statistics = get_dataset_statistics(config)
             self.freq_bias = FrequencyBias(config, statistics)
 
-        self.use_att_repel_loss = config.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS
+        self.use_att_repel_loss = config.MODEL.ROI_RELATION_HEAD.LOGIN.USE_ATT_REP_LOSS
         self.anchor = Anchor()
-        if config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "l1":
+        if config.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE == "l1":
             self.att_repel_loss = nn.L1Loss()
-        elif config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "l2":
+        elif config.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE == "l2":
             self.att_repel_loss = nn.PairwiseDistance(p=2)
-        elif config.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "cos":
+        elif config.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE == "cos":
             self.att_repel_loss = nn.CosineEmbeddingLoss()
 
     def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, rel_features, logger=None):
@@ -65,7 +66,7 @@ class CSIPredictor(nn.Module):
         #     rel_features = rel_feats
 
         # encode context infomation
-        rel_features, obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+        obj_dists, rel_dists = self.login(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
@@ -99,46 +100,63 @@ class CSIPredictor(nn.Module):
                     positive_idxs = matched_idx[unique_match == matched_preds]
                     negative_idxs = matched_idx[unique_match != matched_preds]
 
-                    if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL == "feature":
-                        # feature-level
-                        positives = rel_features[positive_idxs]
-                        negatives = rel_features[negative_idxs]
-                        dim = 512
+                    positive_logits = rel_dists[positive_idxs]
+                    negative_logits = rel_dists[negative_idxs]
 
-                    elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL == "logit":
-                        # logit-level
-                        positives = rel_dists[positive_idxs]
-                        negatives = rel_dists[negative_idxs]
-                        dim = 51
+                    self.anchor.update(key=unique_match, pos=positive_logits, neg=negative_logits)
 
-                    self.anchor.update(key=unique_match, pos=positives, neg=negatives)
-                    
-                    if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "cos":
-                        att_loss = torch.sum(self.att_repel_loss(
-                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(positive_idxs), 1),
-                                        positives.view(-1, dim),
-                                        torch.tensor(1, device=rel_dists.device)
-                                    ))
-                        repel_loss = torch.sum(self.att_repel_loss(
-                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(negative_idxs), 1),
-                                        negatives.view(-1, dim),
-                                        torch.tensor(-1, device=rel_dists.device)
-                                    ))
-                        att_repel_loss += (att_loss + repel_loss)
-                    else:
-                        att_loss = torch.sum(self.att_repel_loss(
-                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(positive_idxs), 1),
-                                        positives.view(-1, dim)
-                                    ))
-                        repel_loss = torch.sum(self.att_repel_loss(
-                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(negative_idxs), 1),
-                                        negatives.view(-1, dim)
-                                    ))
-                        att_repel_loss += (att_loss + repel_loss)
+                    att_repel_loss += torch.sum(
+                                        self.att_repel_loss(
+                                            self.anchor[unique_match].to(rel_dists.device).unsqueeze(0),
+                                            rel_dists[positive_idxs].unsqueeze(0),
+                                            torch.tensor(1, device=rel_dists.device)
+                                        )
+                                    )
                 add_losses["att_repel_loss"] = att_repel_loss
 
         obj_dists = obj_dists.split(num_objs, dim=0)
         rel_dists = rel_dists.split(num_rels, dim=0)
+
+        return obj_dists, rel_dists, add_losses
+
+@registry.ROI_RELATION_PREDICTOR.register("GRCNNPredictor")
+class GRCNNPredictor(nn.Module):
+    def __init__(self, config, in_channels):
+        super(GRCNNPredictor, self).__init__()
+        self.use_bias = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS
+
+        assert in_channels is not None
+
+        self.grcnn = GRCNN(config, in_channels)
+        
+        # freq 
+        if self.use_bias:
+            statistics = get_dataset_statistics(config)
+            self.freq_bias = FrequencyBias(config, statistics)
+
+    def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, rel_features, logger=None):
+        # encode context infomation
+        obj_dists, rel_dists = self.grcnn(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+
+        num_objs = [len(b) for b in proposals]
+        num_rels = [r.shape[0] for r in rel_pair_idxs]
+        assert len(num_rels) == len(num_objs)
+
+        if self.use_bias:
+            obj_preds = obj_dists.max(-1)[1]
+            obj_preds = obj_preds.split(num_objs, dim=0)
+
+            pair_preds = []
+            for pair_idx, obj_pred in zip(rel_pair_idxs, obj_preds):
+                pair_preds.append( torch.stack((obj_pred[pair_idx[:,0]], obj_pred[pair_idx[:,1]]), dim=1) )
+            pair_pred = cat(pair_preds, dim=0)
+
+            rel_dists = rel_dists + self.freq_bias.index_with_labels(pair_pred.long())
+
+        obj_dists = obj_dists.split(num_objs, dim=0)
+        rel_dists = rel_dists.split(num_rels, dim=0)
+
+        add_losses = {}
 
         return obj_dists, rel_dists, add_losses
 

@@ -51,13 +51,13 @@ class RelationFeatureExtractor(nn.Module):
                                               make_fc(out_dim//2, out_dim), nn.ReLU(inplace=True),
                                             ])
 
-        assert not(self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING),\
+        assert not(self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ and self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_MASKING),\
             "pool_sbj_obj and masking should not be used at once!"
-        self.use_sbj_obj = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING 
+        self.use_sbj_obj = self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ or self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_MASKING 
         self.use_semantic = self.cfg.MODEL.ROI_RELATION_HEAD.USE_SEMANTIC
         # union rectangle size
-        self.rect_size = self.resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor" \
-        and self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING else self.resolution * 4 -1
+        self.rect_size = self.resolution if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor" \
+        and self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_MASKING else self.resolution * 4 -1
         rect_input = 1 if self.use_sbj_obj else 2
         self.rect_conv = nn.Sequential(
             nn.Conv2d(rect_input, in_channels //2, kernel_size=7, stride=2, padding=3, bias=True),
@@ -179,7 +179,7 @@ class RelationFeatureExtractor(nn.Module):
                 head_logit_features = self.logit_conv(head_logit_inputs) # Nx151x7x7
                 tail_logit_features = self.logit_conv(tail_logit_inputs) # Nx151x7x7
 
-        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CSIPredictor":
+        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "LOGINPredictor":
             if self.cfg.MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ:
                 union_features = self.feature_extractor.pooler(x, union_proposals) # NxCx7x7
                 head_features = self.feature_extractor.pooler(x, head_proposals)
@@ -197,7 +197,7 @@ class RelationFeatureExtractor(nn.Module):
 
                 return head_features, tail_features, union_features
 
-            elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING: # always requires spatial
+            elif self.cfg.MODEL.ROI_RELATION_HEAD.LOGIN.USE_MASKING: # always requires spatial
                 union_features = self.feature_extractor.pooler(x, union_proposals) # NxCxHxW
                 head_features = union_features * head_rect_inputs # NxCxHxW x Nx1xHxW
                 tail_features = union_features * tail_rect_inputs
