@@ -23,6 +23,7 @@ from .modules_utils import Anchor
 class CSIPredictor(nn.Module):
     def __init__(self, config, in_channels):
         super(CSIPredictor, self).__init__()
+        self.cfg = config
         self.use_bias = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS
 
         assert in_channels is not None
@@ -64,7 +65,7 @@ class CSIPredictor(nn.Module):
         #     rel_features = rel_feats
 
         # encode context infomation
-        obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+        rel_features, obj_dists, rel_dists = self.csinet(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
@@ -98,18 +99,42 @@ class CSIPredictor(nn.Module):
                     positive_idxs = matched_idx[unique_match == matched_preds]
                     negative_idxs = matched_idx[unique_match != matched_preds]
 
-                    positive_logits = rel_dists[positive_idxs]
-                    negative_logits = rel_dists[negative_idxs]
+                    if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL == "feature":
+                        # feature-level
+                        positives = rel_features[positive_idxs]
+                        negatives = rel_features[negative_idxs]
+                        dim = 512
 
-                    self.anchor.update(key=unique_match, pos=positive_logits, neg=negative_logits)
+                    elif self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL == "logit":
+                        # logit-level
+                        positives = rel_dists[positive_idxs]
+                        negatives = rel_dists[negative_idxs]
+                        dim = 51
 
-                    att_repel_loss += torch.sum(
-                                        self.att_repel_loss(
-                                            self.anchor[unique_match].to(rel_dists.device).unsqueeze(0),
-                                            rel_dists[positive_idxs].unsqueeze(0),
-                                            torch.tensor(1, device=rel_dists.device)
-                                        )
-                                    )
+                    self.anchor.update(key=unique_match, pos=positives, neg=negatives)
+                    
+                    if self.cfg.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE == "cos":
+                        att_loss = torch.sum(self.att_repel_loss(
+                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(positive_idxs), 1),
+                                        positives.view(-1, dim),
+                                        torch.tensor(1, device=rel_dists.device)
+                                    ))
+                        repel_loss = torch.sum(self.att_repel_loss(
+                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(negative_idxs), 1),
+                                        negatives.view(-1, dim),
+                                        torch.tensor(-1, device=rel_dists.device)
+                                    ))
+                        att_repel_loss += (att_loss + repel_loss)
+                    else:
+                        att_loss = torch.sum(self.att_repel_loss(
+                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(positive_idxs), 1),
+                                        positives.view(-1, dim)
+                                    ))
+                        repel_loss = torch.sum(self.att_repel_loss(
+                                        self.anchor[unique_match].to(rel_dists.device).view(1, -1).repeat(len(negative_idxs), 1),
+                                        negatives.view(-1, dim)
+                                    ))
+                        att_repel_loss += (att_loss + repel_loss)
                 add_losses["att_repel_loss"] = att_repel_loss
 
         obj_dists = obj_dists.split(num_objs, dim=0)

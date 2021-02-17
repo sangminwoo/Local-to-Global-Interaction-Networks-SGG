@@ -275,4 +275,4 @@ class CSINet(nn.Module):
         #                 min_loss = torch.tensor(0., device=pdist.device)
         #                 loss += torch.max(min_loss, margin-pdist)[0]
 
-        return obj_dists, rel_dists #, loss
+        return rel_features, obj_dists, rel_dists #, loss

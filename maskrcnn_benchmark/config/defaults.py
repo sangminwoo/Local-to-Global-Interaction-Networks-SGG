@@ -377,6 +377,8 @@ _C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
 _C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
 # use attract & repulse loss
 _C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS = True # False
+# what level?
+_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL = 'feature'
 # type of attract & repulse loss
 _C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE = 'cos' # l1, l2, cos
 # use repulsive loss for the opposite direction relationships

@@ -67,11 +67,12 @@ flatten=True # True, False
 compose_type='half_permute' # no_permute, half_permute, full_permute
 # interact
 use_gin=True # True, False
-gin_layers=4 # 1, 2, 4
+gin_layers=1 # 1, 2, 4
 edge2edge=False # True, False
 graph_interact_module='gcn' # gcn, gat, again, self_att
 # repulsive loss
 use_att_rep_loss=True # True, False
+att_rep_loss_level='feature' # feature, logit
 att_rep_loss_type='cos' # l1, l2, cos
 use_repulsive_loss=False # True, False
 margin=1000. # 10., 100., 1000.
@@ -138,6 +139,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL ${att_rep_loss_level} \
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE ${att_rep_loss_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
@@ -179,6 +181,7 @@ else
 		MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE  ${edge2edge} \
 		MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE  ${graph_interact_module} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS ${use_att_rep_loss} \
+		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL ${att_rep_loss_level} \
 		MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE ${att_rep_loss_type} \
 		MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS ${use_repulsive_loss} \
 		MODEL.ROI_RELATION_HEAD.CSINET.MARGIN ${margin} \
