@@ -344,47 +344,47 @@ _C.MODEL.ROI_RELATION_HEAD.REL_PROP = [0.01858, 0.00057, 0.00051, 0.00109, 0.001
                                        0.00647, 0.00084, 0.01077, 0.00132, 0.00069, 0.00376, 0.00214, 0.11424, 0.01205, 0.02958]
 
 
-_C.MODEL.ROI_RELATION_HEAD.CSINET = CN()
+_C.MODEL.ROI_RELATION_HEAD.LOGIN = CN()
 # use cut or not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_CUT = False # True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_CUT = False # True
 # dimension of relevance embedding in cut
-_C.MODEL.ROI_RELATION_HEAD.CSINET.RELEVANCE_DIM = 256
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.RELEVANCE_DIM = 256
 # number of pair proposals in cut
-_C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_PAIR_PROPOSALS = 64
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.NUM_PAIR_PROPOSALS = 64
 # use masking or not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_MASKING = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_MASKING = True
 # use semantic information
 _C.MODEL.ROI_RELATION_HEAD.USE_SEMANTIC = False
 # reduce dimension using conv
-_C.MODEL.ROI_RELATION_HEAD.CSINET.REDUCE_DIM = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.REDUCE_DIM = True
 # use attention or not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_ATT = True
 # attend over sbj, obj, bg simultaneously
-_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_ALL_AT_ONCE = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_ALL_AT_ONCE = True
 # type of attention module
-_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_TYPE = 'non-local' # cbam, self_att, non-local
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_TYPE = 'non-local' # cbam, self_att, non-local
 # whether flatten features
-_C.MODEL.ROI_RELATION_HEAD.CSINET.FLATTEN = False # True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.FLATTEN = False # True
 # type of permutation
-_C.MODEL.ROI_RELATION_HEAD.CSINET.COMPOSE_TYPE = 'half_permute' # no_permute, half_permute, full_permute
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.COMPOSE_TYPE = 'half_permute' # no_permute, half_permute, full_permute
 # use graph interaction network or not
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_GIN = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_GIN = True
 # number of gin layers
-_C.MODEL.ROI_RELATION_HEAD.CSINET.NUM_GIN_LAYERS = 1
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.NUM_GIN_LAYERS = 1
 # whether consider edge-to-edge connection in adjacency matrix
-_C.MODEL.ROI_RELATION_HEAD.CSINET.EDGE2EDGE = True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.EDGE2EDGE = True
 # type of graph interact module
-_C.MODEL.ROI_RELATION_HEAD.CSINET.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.GRAPH_INTERACT_MODULE = 'again' # gcn, gat, again
 # use attract & repulse loss
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_ATT_REP_LOSS = True # False
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_ATT_REP_LOSS = True # False
 # what level?
-_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_LEVEL = 'feature'
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_LEVEL = 'feature'
 # type of attract & repulse loss
-_C.MODEL.ROI_RELATION_HEAD.CSINET.ATT_REP_LOSS_TYPE = 'cos' # l1, l2, cos
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE = 'cos' # l1, l2, cos
 # use repulsive loss for the opposite direction relationships
-_C.MODEL.ROI_RELATION_HEAD.CSINET.USE_REPULSIVE_LOSS = False # True
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.USE_REPULSIVE_LOSS = False # True
 # margin
-_C.MODEL.ROI_RELATION_HEAD.CSINET.MARGIN = 10. # 10., 100., 1000.
+_C.MODEL.ROI_RELATION_HEAD.LOGIN.MARGIN = 10. # 10., 100., 1000.
 
 
 _C.MODEL.VGG = CN()

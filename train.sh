@@ -36,8 +36,8 @@ else
 	run="tools/relation_train_net.py"
 	config="configs/e2e_relation_VGG16_1x.yaml" # "e2e_relation_VGG16_1x", "e2e_relation_X_101_32_8_FPN_1x"
 fi
-detector_checkpoint="/home/f3_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
-predictor="GRCNNPredictor" # LOGINPredictor, MotifPredictor, IMPPredictor, VCTreePredictor, GRCNNPredictor
+detector_checkpoint="/home/t2_u1/repo/csi-net/checkpoints/pretrained_faster_rcnn/vgg_backbone/model_final.pth"
+predictor="LOGINPredictor" # LOGINPredictor, MotifPredictor, IMPPredictor, VCTreePredictor, GRCNNPredictor
 backbone="VGG-16" # VGG-16, R-101-FPN
 pre_val=False
 resolution=7
