@@ -38,6 +38,19 @@ class Anchor:
         self.anchor[key] = a_cur
         self.num_of_embs[key] = num_prev + num_pos + num_neg
 
+
+class EmbeddingsList:
+    def __init__(self):
+        super(EmbeddingsList, self).__init__()
+        self.queue_dict = {}
+
+        for i in range(51):
+            self.queue_dict[i] = []
+
+    def update(self, key, val):
+        self.queue_dict[key].append(val)
+        self.queue_dict[key] = self.queue_dict[key][:30]
+
 ############### Split (Coord-Conv) ################
 class AddCoordinates:
     def __init__(self, with_r=False):

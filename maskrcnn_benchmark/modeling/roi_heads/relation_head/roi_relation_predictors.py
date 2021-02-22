@@ -19,14 +19,15 @@ from .model_login import LOGIN
 
 from .utils_relation import layer_init, get_box_info, get_box_pair_info
 from maskrcnn_benchmark.data import get_dataset_statistics
-from .login_utils import Anchor
+from .login_utils import Anchor, EmbeddingsList
 
+import pickle
 from sklearn.manifold import TSNE
 from sklearn.datasets import load_digits
 from matplotlib import pyplot as plt
 import seaborn as sns
 sns.set(rc={'figure.figsize':(11.7,8.27)})
-palette = sns.color_palette("bright", 10)
+palette = sns.color_palette("bright", 151)
 
 @registry.ROI_RELATION_PREDICTOR.register("LOGINPredictor")
 class LOGINPredictor(nn.Module):
@@ -58,7 +59,9 @@ class LOGINPredictor(nn.Module):
             self.freq_bias = FrequencyBias(config, statistics)
 
         self.use_att_repel_loss = config.MODEL.ROI_RELATION_HEAD.LOGIN.USE_ATT_REP_LOSS
-        self.anchor = Anchor()
+        self.anchors = Anchor()
+        self.embeddings_list = EmbeddingsList()
+
         if config.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE == "l1":
             self.att_repel_loss = nn.L1Loss()
         elif config.MODEL.ROI_RELATION_HEAD.LOGIN.ATT_REP_LOSS_TYPE == "l2":
@@ -91,11 +94,6 @@ class LOGINPredictor(nn.Module):
 
             rel_dists = rel_dists + self.freq_bias.index_with_labels(pair_pred.long())
 
-        if self.visualize_feats:
-            tsne = TSNE()
-            X_embedded = tsne.fit_transform(rel_feats)
-            sns.scatterplot(X_embedded[:,0], X_embedded[:,1], hue=y, legend='full', palette=palette)
-
         add_losses = {}
         if self.training:
             if self.use_att_repel_loss:
@@ -116,16 +114,32 @@ class LOGINPredictor(nn.Module):
                     positive_logits = rel_dists[positive_idxs]
                     negative_logits = rel_dists[negative_idxs]
 
-                    self.anchor.update(key=unique_match, pos=positive_logits, neg=negative_logits)
+                    self.anchors.update(key=unique_match, pos=positive_logits, neg=negative_logits)
 
                     att_repel_loss += torch.sum(
                                         self.att_repel_loss(
-                                            self.anchor[unique_match].to(rel_dists.device).unsqueeze(0),
+                                            self.anchors[unique_match].to(rel_dists.device).unsqueeze(0),
                                             rel_dists[positive_idxs].unsqueeze(0),
                                             torch.tensor(1, device=rel_dists.device)
                                         )
                                     )
                 add_losses["att_repel_loss"] = att_repel_loss
+
+        if self.visualize_feats:
+            if rel_feats is not None and rel_labels is not None:
+                for rel_label, rel_feat in zip(rel_labels.cpu().detach(), rel_feats.cpu().detach().numpy()):
+                    self.embeddings_list.update(key=int(rel_label), val=rel_feat)
+
+            with open('embeddings_list.pkl', 'wb') as f:
+                pickle.dump(self.embeddings_list, f, pickle.HIGHEST_PROTOCOL)
+
+            # anchors = np.array(list(self.anchors.anchor.values()))
+
+            # tsne = TSNE()
+            # X_embedded = tsne.fit_transform(anchors) # rel_feats.cpu().detach().numpy()
+            # sns.scatterplot(x=X_embedded[:,0], y=X_embedded[:,1], hue=np.array(list(self.anchors.anchor.keys())), legend='full', palette=palette)
+            # sns.scatterplot(x=X_embedded[:,0], y=X_embedded[:,1], hue=rel_labels.cpu().detach().numpy(), legend='full', palette=palette)
+            # plt.show()
 
         obj_dists = obj_dists.split(num_objs, dim=0)
         rel_dists = rel_dists.split(num_rels, dim=0)
