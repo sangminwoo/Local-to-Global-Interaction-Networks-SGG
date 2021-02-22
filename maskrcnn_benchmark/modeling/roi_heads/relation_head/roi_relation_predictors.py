@@ -21,11 +21,19 @@ from .utils_relation import layer_init, get_box_info, get_box_pair_info
 from maskrcnn_benchmark.data import get_dataset_statistics
 from .login_utils import Anchor
 
+from sklearn.manifold import TSNE
+from sklearn.datasets import load_digits
+from matplotlib import pyplot as plt
+import seaborn as sns
+sns.set(rc={'figure.figsize':(11.7,8.27)})
+palette = sns.color_palette("bright", 10)
+
 @registry.ROI_RELATION_PREDICTOR.register("LOGINPredictor")
 class LOGINPredictor(nn.Module):
     def __init__(self, config, in_channels):
         super(LOGINPredictor, self).__init__()
         self.use_bias = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS
+        self.visualize_feats = config.MODEL.ROI_RELATION_HEAD.VISUALIZE_FEATS
 
         assert in_channels is not None
 
@@ -66,7 +74,7 @@ class LOGINPredictor(nn.Module):
         #     rel_features = rel_feats
 
         # encode context infomation
-        obj_dists, rel_dists = self.login(roi_features, proposals, rel_features, rel_pair_idxs, logger)
+        rel_feats, obj_dists, rel_dists = self.login(roi_features, proposals, rel_features, rel_pair_idxs, logger)
 
         num_objs = [len(b) for b in proposals]
         num_rels = [r.shape[0] for r in rel_pair_idxs]
@@ -82,6 +90,11 @@ class LOGINPredictor(nn.Module):
             pair_pred = cat(pair_preds, dim=0)
 
             rel_dists = rel_dists + self.freq_bias.index_with_labels(pair_pred.long())
+
+        if self.visualize_feats:
+            tsne = TSNE()
+            X_embedded = tsne.fit_transform(rel_feats)
+            sns.scatterplot(X_embedded[:,0], X_embedded[:,1], hue=y, legend='full', palette=palette)
 
         add_losses = {}
         if self.training:

@@ -319,6 +319,7 @@ _C.MODEL.ROI_RELATION_HEAD.PREDICT_USE_VISION = True
 _C.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS = True
 _C.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP = True
 _C.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL = 4  # when sample fg relationship from gt, the max number of corresponding proposal pairs
+_C.MODEL.ROI_RELATION_HEAD.VISUALIZE_FEATS = True
 
 # in sgdet, to make sure the detector won't missing any ground truth bbox, 
 # we add grount truth box to the output of RPN proposals during Training

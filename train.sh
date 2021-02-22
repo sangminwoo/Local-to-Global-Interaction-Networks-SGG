@@ -50,6 +50,7 @@ checkpoint_period=50000
 random_seed=0
 
 # preset
+visualize_feats=True # True, Falses
 use_bias=True # True, False
 pool_sbj_obj=True # True, False
 use_masking=False # True, False
@@ -120,6 +121,7 @@ else
 		MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 		MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
 		SOLVER.PRE_VAL ${pre_val} \
+		MODEL.ROI_RELATION_HEAD.VISUALIZE_FEATS ${visualize_feats} \
 		MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 		MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 		MODEL.ROI_RELATION_HEAD.USE_SEMANTIC ${use_semantic} \
@@ -161,6 +163,7 @@ else
 		MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION ${resolution} \
 		MODEL.ROI_RELATION_HEAD.PREDICTOR ${predictor} \
 		SOLVER.PRE_VAL ${pre_val} \
+		MODEL.ROI_RELATION_HEAD.VISUALIZE_FEATS ${visualize_feats} \
 		MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS ${use_bias} \
 		MODEL.ROI_RELATION_HEAD.POOL_SBJ_OBJ ${pool_sbj_obj} \
 		MODEL.ROI_RELATION_HEAD.USE_SEMANTIC ${use_semantic} \
