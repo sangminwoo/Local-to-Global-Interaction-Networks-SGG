@@ -1,5 +1,11 @@
 # Local-to-Global Interaction Networks (LOGIN)
 
+| :warning: WARNING                |
+|:---------------------------------|
+| **This repo is not done yet...**  |
+
+-------------------------------------------------------------------
+
 Implementation of ["Tackling the Challenges in Scene Graph Generation with Local-to-Global Interactions"](https://arxiv.org/pdf/2106.08543.pdf).
 
 In this work, we seek new insights into the underlying challenges of the Scene Graph Generation (SGG) task. Quantitative and qualitative analysis of the Visual Genome dataset implies -- **1) Ambiguity**: even if inter-object relationship contains the same object (or predicate), they may not be visually or semantically similar, **2) Asymmetry**: despite the nature of the relationship that embodied the direction, it was not well addressed in previous studies, and **3) Higher-order contexts**: leveraging the identities of certain graph elements can help to generate accurate scene graphs.
