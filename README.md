@@ -22,11 +22,12 @@ Motivated by the analysis, we design a novel SGG framework, **Local-to-Global In
 
 ## Citation
 
-    @article{woo2021tackling,
-      title={{Tackling the Challenges in Scene Graph Generation with Local-to-Global Interactions}},
+    @article{woo2022tackling,
+      title={Tackling the Challenges in Scene Graph Generation with Local-to-Global Interactions},
       author={Woo, Sangmin and Noh, Junhyug and Kim, Kangil},
-      journal={arXiv preprint arXiv:2106.08543},
-      year={2021}
+      journal={IEEE Transactions on Neural Networks and Learning Systems},
+      year={2022},
+      publisher={IEEE}
     }
 
 ## Acknowledgement
